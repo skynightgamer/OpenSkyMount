@@ -108,6 +108,9 @@ class AxisSim:
         return a * dt * (math.sqrt(0.25 + 2.0 * distance / (a * dt * dt)) - 0.5)
 
     def step(self, dt: float) -> None:
+        if self.mode == self.POSITION and self.ff:
+            # A setpoint is (position, rate): extrapolate it until the next command arrives.
+            self.target += self.ff * dt
         v_des = self._desired_velocity(dt)
         dv_max = self.p.max_accel * dt
         v_new = self.vel + max(-dv_max, min(dv_max, v_des - self.vel))

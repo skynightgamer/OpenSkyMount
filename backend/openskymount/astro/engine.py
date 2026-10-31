@@ -234,8 +234,17 @@ class AstronomyEngine:
             "distance_au": float(dist.au),
         }
 
-    def altaz_to_radec(self, alt: float, az: float, unix: float) -> dict[str, float]:
-        """Sky coordinates of a horizon direction (refraction not removed)."""
+    def altaz_to_radec(self, alt: float, az: float, unix: float, refracted: bool = True) -> dict[str, float]:
+        """Sky coordinates of a horizon direction.
+
+        ``refracted``: ``alt`` is an observed (refracted) altitude, as used for pointing; the
+        configured refraction is removed before converting.
+        """
+        kw = self._refraction_kwargs()
+        if refracted and kw and alt > -1.0:
+            from skyfield.earthlib import refraction
+
+            alt = alt - float(refraction(alt, kw["temperature_C"], kw["pressure_mbar"]))
         t = self.time(unix)
         pos = self.site.at(t).from_altaz(alt_degrees=alt, az_degrees=az)
         ra, dec, _ = pos.radec()

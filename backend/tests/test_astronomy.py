@@ -231,3 +231,15 @@ def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.dateti
                 assert separation(float(alt), float(az), body.alt.deg, body.az.deg) < 60 * ARCSEC, planet
                 checked += 1
     assert checked == 9
+
+
+def test_altaz_to_radec_inverts_apparent_position(engine: AstronomyEngine) -> None:
+    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    for name in ("Capella", "jupiter", "Vega"):
+        target = engine.resolve(name)
+        alt, az = engine.altaz(target, unix)
+        back = engine.altaz_to_radec(float(alt), float(az), unix)
+        ref = engine.radec(target, unix)
+        d_ra = (back["ra_j2000"] - ref["ra_j2000"]) * math.cos(math.radians(ref["dec_j2000"]))
+        # Refraction removed; residual = aberration/deflection differences (< 25").
+        assert math.hypot(d_ra, back["dec_j2000"] - ref["dec_j2000"]) < 25 * ARCSEC, name
