@@ -74,6 +74,7 @@ export interface PublicConfig {
   capabilities: { name: string; kind: string; simulated: boolean; supports_time_warp: boolean; has_axis_encoders: boolean };
   injectable_faults: string[];
   version: string;
+  plate_solver: boolean;
 }
 
 export interface Toast {

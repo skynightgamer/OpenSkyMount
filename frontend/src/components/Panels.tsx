@@ -293,6 +293,7 @@ export function MotionPanel() {
           Home
         </button>
       </div>
+      <AlignButton enabled={ctl && !latched} />
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} />
       <div className="speed" role="radiogroup" aria-label="Manual speed">
         {[0.05, 0.5, 2, 5].map((s) => (
@@ -302,6 +303,29 @@ export function MotionPanel() {
         ))}
       </div>
     </section>
+  );
+}
+
+function AlignButton({ enabled }: { enabled: boolean }) {
+  const available = useStore((s) => !!s.config?.plate_solver && !!s.config?.capabilities.simulated);
+  const hasTarget = useStore((s) => !!s.mount?.target);
+  const [busy, setBusy] = useState(false);
+  if (!available) return null;
+  return (
+    <div className="row">
+      <button
+        disabled={!enabled || !hasTarget || busy}
+        title="Experimental: render a synthetic camera frame at the simulated true pointing, plate-solve it and correct the pointing model"
+        onClick={async () => {
+          setBusy(true);
+          const a = await command("align_simulated", { apply: true });
+          setBusy(false);
+          if (a.ok) toast(String(a.message));
+        }}
+      >
+        {busy ? "Solving…" : "Align: plate solve (simulated camera, experimental)"}
+      </button>
+    </div>
   );
 }
 

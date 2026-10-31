@@ -143,3 +143,24 @@ def test_config_change_persists(tmp_path) -> None:
     again = Observatory(state_dir=tmp_path)
     assert again.config.observer.name == "Sydney" and again.config.payload == "telescope"
     assert again.controller.limits.max_altitude == 82.0
+
+
+def test_simulated_alignment_command(tmp_path) -> None:
+    from openskymount.solve import solver_available
+
+    if not solver_available():
+        pytest.skip("cedar-solve not installed")
+    obs = Observatory(state_dir=tmp_path)
+    with TestClient(create_app(observatory=obs)) as c, c.websocket_connect("/ws?name=a") as a:
+        ca = Cmd(a)
+        ca.control()
+        assert ca("set_config", sim={"alt_zero_offset": 0.4})["ok"]
+        assert ca("set_clock", time=T0, rate=20)["ok"]
+        assert ca("goto", target="Capella")["ok"]
+        recv_until(a, lambda m: m["type"] == "state" and m["mount"]["mode"] == "tracking", timeout=30)
+        r = ca("align_simulated")
+        assert r["ok"], r
+        assert r["result"]["correction"]["error_deg"] > 0.2
+        m = recv_until(a, lambda m: m["type"] == "state" and m["mount"]["true_pointing_error"] is not None
+                       and m["mount"]["true_pointing_error"] < 0.05, timeout=30)
+        assert m["mount"]["mode"] in ("tracking", "slewing")

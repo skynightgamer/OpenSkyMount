@@ -146,7 +146,15 @@ class Observatory:
             "capabilities": self.driver.capabilities().to_dict(),
             "injectable_faults": list(INJECTABLE_FAULTS) if self.driver.capabilities().simulated else [],
             "version": __version__,
+            "plate_solver": self._solver_ok(),
         }
+
+    def _solver_ok(self) -> bool:
+        if not hasattr(self, "_solver_cache"):
+            from ..solve import solver_available
+
+            self._solver_cache = solver_available()
+        return self._solver_cache
 
     def catalog_json(self) -> bytes:
         if self._catalog_json is None:
@@ -237,6 +245,23 @@ class Observatory:
         if cmd == "set_config":
             self.apply_config(args)
             return {"ok": True, "message": "Configuration updated"}
+        if cmd == "align_simulated":
+            from ..solve import SolverUnavailable, simulated_alignment
+
+            try:
+                res = simulated_alignment(c, apply=bool(args.get("apply", True)))
+            except SolverUnavailable as exc:
+                raise CommandError(str(exc)) from exc
+            sol = res["solution"]
+            if not sol["solved"]:
+                return {"ok": False, "message": f"plate solve failed: {sol.get('reason')}", "result": res}
+            corr = res.get("correction", {})
+            return {
+                "ok": True,
+                "message": f"Solved ({sol['matches']} stars): pointing error was {corr.get('error_deg', 0) * 60:.1f}′"
+                + ("; correction applied" if res.get("applied") else ""),
+                "result": res,
+            }
         if cmd == "inject_fault":
             try:
                 self.driver.inject_fault(str(args.get("fault")), bool(args.get("active", True)))
