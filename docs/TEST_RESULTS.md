@@ -7,7 +7,7 @@ Last full run: 2026-10-31, Linux cloud container, Python 3.13.18, Node 22.23. Ve
 |---|---|---|
 | Lint (ruff) | `ruff check backend/openskymount backend/tests` | pass |
 | Types (mypy) | `cd backend && mypy openskymount` | pass (20 files) |
-| Backend tests | `cd backend && pytest -q` | **77 passed** in ~41 s with optional extras installed; clean `pip install -e backend[dev]` without extras: 68 passed, 9 skipped (astropy + solver) |
+| Backend tests | `cd backend && pytest -q` | **77 passed** in ~41 s with optional extras installed; clean `pip install -e backend[dev]` without extras: 67 passed, 8 skipped (astropy module + solver tests) |
 | Frontend types | `cd frontend && npx tsc -p tsconfig.json` | pass |
 | Frontend unit | `cd frontend && npx vitest run` | **6 passed** (projection math, Earth-rotation extrapolation, formatting) |
 | Browser E2E | `node frontend/e2e/smoke.cjs` (headless Chromium, desktop + phone viewport) | **pass** |
