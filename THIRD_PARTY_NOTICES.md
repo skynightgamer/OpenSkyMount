@@ -1,0 +1,18 @@
+# Third-party notices
+
+| Component | Use | License |
+|---|---|---|
+| d3-celestial data (Olaf Frohn) | Star positions/magnitudes/names, constellation lines, Messier list → `backend/openskymount/data/catalog.json` (converted by `scripts/build_catalog.py`) | BSD-3-Clause, full text in `backend/openskymount/data/LICENSE.d3-celestial` |
+| Hipparcos catalogue (ESA) | Origin of the star data above | Public scientific data |
+| JPL DE421 ephemeris (via `skyfield-data`) | Planet/Sun/Moon positions | Public domain (NASA/JPL); skyfield-data is MIT |
+| Skyfield, jplephem, sgp4 | Astronomy computations | MIT |
+| FastAPI, Starlette, Uvicorn, Pydantic | Web server | MIT / BSD-3-Clause |
+| NumPy | Numerics | BSD-3-Clause |
+| React, React-DOM | UI | MIT |
+| three.js | 3D view | MIT |
+| Vite, TypeScript, Vitest | Build/test tooling (not shipped) | MIT / Apache-2.0 |
+| cedar-solve (fork of ESA tetra3) — *optional, not bundled* | Plate-solving proof of concept | Apache-2.0 (tetra3 derivative of MIT-licensed Tetra) |
+| Astropy — *optional, tests only* | Independent cross-check | BSD-3-Clause |
+
+All licenses are compatible with distributing OpenSkyMount under MIT. No code was copied from
+GPL-licensed projects (Stellarium, OnStepX, INDI, astrometry.net were evaluated but not incorporated).
