@@ -296,3 +296,13 @@ def test_zenith_pass_recovers(make_rig) -> None:
     assert snap["mode"] == Mode.TRACKING
     assert snap["true_pointing_error"] < cfg.control.tracking_tolerance_deg
     assert snap["target"]["alt"] < 85.0
+
+
+@pytest.mark.parametrize("dt", [0.05, 1.0, 10.0])
+def test_steady_state_error_is_small_for_any_update_span(rig: Rig, dt: float) -> None:
+    """Regression: setpoints must refer to the instant they are applied (no one-interval lead)."""
+    rig.ctl.goto("jupiter")
+    rig.run(60)
+    snap = rig.run(600, dt=dt)
+    assert snap["mode"] == Mode.TRACKING
+    assert snap["true_pointing_error"] < 5.0 / 3600, snap["true_pointing_error"] * 3600

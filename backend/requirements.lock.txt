@@ -1,0 +1,17 @@
+# Versions verified by the automated test suite (Python 3.13, 2026-10-31). Not a strict pin.
+fastapi==0.162.0
+uvicorn==0.54.0
+skyfield==1.55
+skyfield-data==7.0.0
+jplephem==2.24
+numpy==2.5.4
+starlette==1.10.0
+pydantic==2.14.2
+pytest==9.2.0
+httpx==0.28.1
+ruff==0.17.3
+mypy==2.4.1
+astropy==8.0.2
+cedar-solve==0.5.1
+scipy==1.18.1
+pillow==13.0.0

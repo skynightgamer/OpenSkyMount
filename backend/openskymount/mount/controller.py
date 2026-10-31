@@ -334,11 +334,14 @@ class MountController:
         step = span / n
         if self.track is not None and self.mode in (Mode.SLEWING, Mode.TRACKING):
             self.track.ensure(self._t, sim_time)
-        t = self._t
+        t_prev = self._t
         for i in range(1, n + 1):
             t = self._t + i * step if i < n else sim_time
-            self._control_step(t, wall_time)
+            # Setpoints are computed for the driver's current instant (start of the interval);
+            # the (position, rate) setpoint is then extrapolated by the axis while it runs.
+            self._control_step(t_prev, wall_time)
             self.driver.update(t)
+            t_prev = t
         self._t = sim_time
         self._status = self.driver.status()
 
@@ -546,8 +549,8 @@ class MountController:
         target: dict[str, Any] | None = None
         true_err = None
         if self.target is not None:
-            if self.track is not None and self.last_target_pos and self.mode in (Mode.SLEWING, Mode.TRACKING):
-                alt, az, ar, zr = self.last_target_pos
+            if self.track is not None and self.mode in (Mode.SLEWING, Mode.TRACKING):
+                alt, az, ar, zr = self.track.at(self._t)
             else:
                 alt, az, ar, zr = self.engine.altaz_rates(self.target, self._t)
             target = {**self.target.summary(), "alt": alt, "az": az, "alt_rate": ar, "az_rate": zr}
