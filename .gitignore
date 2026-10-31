@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+backend/openskymount/static/
+*.log
+.DS_Store
+/state/
