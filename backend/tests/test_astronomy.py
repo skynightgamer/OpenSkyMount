@@ -234,7 +234,7 @@ def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.dateti
 
 
 def test_altaz_to_radec_inverts_apparent_position(engine: AstronomyEngine) -> None:
-    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.UTC).timestamp()
     for name in ("Capella", "jupiter", "Vega"):
         target = engine.resolve(name)
         alt, az = engine.altaz(target, unix)
