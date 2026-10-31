@@ -22,10 +22,11 @@ from .driver import DriverStatus, MountDriver
 from .geometry import field_rotation_rate, nearest_unwrapped, separation, wrap180
 
 CONTROL_DT = 0.1  # s of simulation time between setpoints
+STEADY_CONTROL_DT = 1.0  # while tracking smoothly with feed-forward
 MAX_CONTROL_STEPS = 2500  # per update; larger spans use coarser steps
 SETTLE_STEPS = 5
 REACQUIRE_DEG = 1.0
-SUN_CHECK_INTERVAL = 10.0
+SUN_CHECK_INTERVAL = 30.0
 
 
 class Mode:
@@ -59,8 +60,9 @@ class TargetTrack:
     def ensure(self, t0: float, t1: float) -> None:
         if len(self.t) and self.t[0] <= t0 and self.t[-1] >= t1:
             return
-        span = max(10.0, (t1 - t0) * 1.5)
-        n = 21 if span <= 40 else int(min(400, span / 2.0)) + 1
+        # One vectorised ephemeris call covers the next few minutes (2 s sample spacing).
+        span = max(120.0, (t1 - t0) * 4.0)
+        n = int(min(600, span / 2.0)) + 1
         times = np.linspace(t0 - 1.0, t0 + span, n)
         alt, az = self.engine.altaz(self.target, times)
         self.t, self.alt = times, alt
@@ -327,7 +329,8 @@ class MountController:
             if span < 0:
                 self._time_jump(sim_time)
             return
-        n = min(MAX_CONTROL_STEPS, max(1, math.ceil(span / CONTROL_DT - 1e-9)))
+        steady = self.mode == Mode.TRACKING and not self.flags and (self.tracking_error or 1.0) < 0.01
+        n = min(MAX_CONTROL_STEPS, max(1, math.ceil(span / (STEADY_CONTROL_DT if steady else CONTROL_DT) - 1e-9)))
         step = span / n
         if self.track is not None and self.mode in (Mode.SLEWING, Mode.TRACKING):
             self.track.ensure(self._t, sim_time)

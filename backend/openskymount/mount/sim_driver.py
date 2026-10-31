@@ -18,6 +18,7 @@ HOME_ALT = 0.0
 HOME_AZ = 0.0
 LIMIT_MARGIN = 2.0  # hard limit switches sit this far beyond the soft limits
 SENSOR_DISAGREEMENT_DEG = 0.5
+STEADY_STEP_S = 0.2
 
 
 @dataclass
@@ -52,6 +53,8 @@ class SimulatedMountDriver(MountDriver):
             backlash=backlash,
             hard_min=lo - LIMIT_MARGIN,
             hard_max=hi + LIMIT_MARGIN,
+            soft_min=lo,
+            soft_max=hi,
         )
 
     def reconfigure(self, limits: MountLimits, sim: SimulationConfig) -> None:
@@ -116,6 +119,13 @@ class SimulatedMountDriver(MountDriver):
         self.az.hard_stop()
 
     def reset(self) -> None:
+        if self.sim.has_axis_encoders and Fault.SENSOR_DISAGREEMENT in self._faults:
+            # Lost steps: trust the absolute axis encoders and re-reference the step counters.
+            # Idealisation: the firmware also knows on which side of the gear slack it sits
+            # (from the last motion direction), so the counter is set to the motor-side angle.
+            for axis in (self.alt, self.az):
+                axis.set_count(axis.motor)
+                axis.hard_stop()
         self._estop = False
         self._faults.clear()
         self.alt.limit_hit = False
@@ -186,8 +196,9 @@ class SimulatedMountDriver(MountDriver):
             return
         # Home switches reference the *true* output position: re-zero the step counters
         # so the reported position equals the physical switch position.
-        self.alt.set_count(self.alt.output)
-        self.az.set_count(self.az.output)
+        # (Idealised: approach direction known, so the counter matches the motor-side angle.)
+        self.alt.set_count(self.alt.motor)
+        self.az.set_count(self.az.motor)
         self.alt.command_position(HOME_ALT)
         self.az.command_position(HOME_AZ)
         self._homing = False
@@ -200,9 +211,13 @@ class SimulatedMountDriver(MountDriver):
             for c in self._queue:
                 c.at = min(c.at, sim_time)
             return
-        dt_max = self.sim.physics_step_s
         while self._time < sim_time - 1e-12:
+            # Fine steps while accelerating; coarse steps in steady state (sidereal tracking),
+            # where the motion is smooth and the result is the same within micro-degrees.
+            dt_max = self.sim.physics_step_s if (self._homing or self.alt.active or self.az.active) else STEADY_STEP_S
             dt = min(dt_max, sim_time - self._time)
+            if self._queue:
+                dt = min(dt, max(self._queue[0].at - self._time, self.sim.physics_step_s))
             while self._queue and self._queue[0].at <= self._time:
                 self._apply(self._queue.popleft())
             if not self._estop:

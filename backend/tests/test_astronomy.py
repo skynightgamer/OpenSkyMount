@@ -50,7 +50,7 @@ def test_unix_time_roundtrip(engine: AstronomyEngine) -> None:
 
 def test_leap_second_awareness(engine: AstronomyEngine) -> None:
     # TT - UTC was 69.184 s from 2017 onward (37 leap seconds + 32.184 s).
-    t = engine.time(dt.datetime(2020, 1, 1, tzinfo=dt.timezone.utc).timestamp())
+    t = engine.time(dt.datetime(2020, 1, 1, tzinfo=dt.UTC).timestamp())
     assert abs((t.tt - t.J * 0 - _utc_jd(t)) * 86400 - 69.184) < 1e-3
 
 
@@ -88,7 +88,7 @@ def test_meeus_13b_venus_horizontal() -> None:
         temperature_c=None, pressure_mbar=None,
     )
     eng = AstronomyEngine(obs)
-    unix = dt.datetime(1987, 4, 10, 19, 21, 0, tzinfo=dt.timezone.utc).timestamp()
+    unix = dt.datetime(1987, 4, 10, 19, 21, 0, tzinfo=dt.UTC).timestamp()
     alt, az = eng.altaz(eng.resolve("venus"), unix)
     # Meeus: A = 68.0337° measured from South => 248.0337° from North; h = 15.1249°.
     # Tolerance covers Venus' topocentric parallax and the UT1 model (Meeus is geocentric).
@@ -98,7 +98,7 @@ def test_meeus_13b_venus_horizontal() -> None:
 
 def test_polaris_altitude_close_to_latitude(engine: AstronomyEngine) -> None:
     for hour in range(0, 24, 3):
-        unix = dt.datetime(2026, 1, 1, hour, tzinfo=dt.timezone.utc).timestamp()
+        unix = dt.datetime(2026, 1, 1, hour, tzinfo=dt.UTC).timestamp()
         alt, _ = engine.altaz(engine.resolve("Polaris"), unix)
         assert abs(float(alt) - engine.observer.latitude) < 1.0
 
@@ -108,7 +108,7 @@ def test_horizon_matrix_matches_full_computation(engine: AstronomyEngine) -> Non
     from openskymount.config import ObserverConfig as OC
 
     eng = AstronomyEngine(OC(temperature_c=None, pressure_mbar=None))
-    unix = dt.datetime(2026, 3, 1, 22, tzinfo=dt.timezone.utc).timestamp()
+    unix = dt.datetime(2026, 3, 1, 22, tzinfo=dt.UTC).timestamp()
     m = eng.horizon_matrix(unix)
     for name in ("Vega", "Sirius", "Capella", "Deneb", "Betelgeuse"):
         target = eng.resolve(name)
@@ -123,7 +123,7 @@ def test_horizon_matrix_matches_full_computation(engine: AstronomyEngine) -> Non
 def test_refraction_raises_low_objects() -> None:
     plain = AstronomyEngine(ObserverConfig(temperature_c=None, pressure_mbar=None))
     refr = AstronomyEngine(ObserverConfig(temperature_c=10.0, pressure_mbar=1010.0))
-    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.UTC).timestamp()
     # Find a star a few degrees above the horizon.
     for star in plain.catalog.stars[:200]:
         target = plain.resolve(f"hip:{star['hip']}")
@@ -137,7 +137,7 @@ def test_refraction_raises_low_objects() -> None:
 
 
 def test_jupiter_direction_and_info(engine: AstronomyEngine) -> None:
-    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.timezone.utc).timestamp()
+    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.UTC).timestamp()
     info = engine.info(engine.resolve("Jupiter"), unix)
     assert info["name"] == "Jupiter" and info["kind"] == "planet"
     assert info["above_horizon"] and 0 < info["alt"] < 90
@@ -173,7 +173,7 @@ def test_observer_validation() -> None:
 
 def test_southern_hemisphere_and_date_line() -> None:
     eng = AstronomyEngine(ObserverConfig(latitude=-33.87, longitude=151.21, name="Sydney"))
-    unix = dt.datetime(2026, 6, 1, 12, tzinfo=dt.timezone.utc).timestamp()  # 22:00 local
+    unix = dt.datetime(2026, 6, 1, 12, tzinfo=dt.UTC).timestamp()  # 22:00 local
     alt, _ = eng.altaz(eng.resolve("dso:M7"), unix)
     assert float(alt) > 30  # Scorpius high in the June evening sky from Sydney
     alt_polaris, _ = eng.altaz(eng.resolve("Polaris"), unix)
@@ -196,9 +196,9 @@ def astropy_env():
 @pytest.mark.parametrize(
     "lat,lon,when",
     [
-        (52.52, 13.405, dt.datetime(2021, 8, 15, 21, 30, tzinfo=dt.timezone.utc)),
-        (-33.87, 151.21, dt.datetime(2022, 3, 1, 11, 0, tzinfo=dt.timezone.utc)),
-        (19.82, -155.47, dt.datetime(2020, 12, 21, 8, 0, tzinfo=dt.timezone.utc)),
+        (52.52, 13.405, dt.datetime(2021, 8, 15, 21, 30, tzinfo=dt.UTC)),
+        (-33.87, 151.21, dt.datetime(2022, 3, 1, 11, 0, tzinfo=dt.UTC)),
+        (19.82, -155.47, dt.datetime(2020, 12, 21, 8, 0, tzinfo=dt.UTC)),
     ],
 )
 def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.datetime) -> None:

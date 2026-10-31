@@ -239,7 +239,7 @@ class AstronomyEngine:
         t = self.time(unix)
         pos = self.site.at(t).from_altaz(alt_degrees=alt, az_degrees=az)
         ra, dec, _ = pos.radec()
-        ra_d, dec_d, _ = pos.radec(epoch="date")
+        ra_d, dec_d, _ = pos.radec(epoch=t)
         return {
             "ra_j2000": float(ra.hours) * 15.0,
             "dec_j2000": float(dec.degrees),

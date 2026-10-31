@@ -10,7 +10,7 @@ from openskymount.mount.controller import MountController
 from openskymount.mount.sim_driver import SimulatedMountDriver
 
 # 2026-11-01 01:00 UTC: Jupiter well up in the east from Berlin, night time.
-T0 = dt.datetime(2026, 11, 1, 1, 0, tzinfo=dt.timezone.utc).timestamp()
+T0 = dt.datetime(2026, 11, 1, 1, 0, tzinfo=dt.UTC).timestamp()
 
 
 @pytest.fixture(scope="session")

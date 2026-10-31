@@ -41,7 +41,8 @@ openskymount = ["data/*.json", "data/LICENSE*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-filterwarnings = ["ignore::RuntimeWarning:skyfield_data.*"]
+filterwarnings = ["ignore::RuntimeWarning:skyfield_data.*", "ignore::DeprecationWarning:fastapi.*"]
+addopts = "-p no:asyncio"
 
 [tool.ruff]
 line-length = 110

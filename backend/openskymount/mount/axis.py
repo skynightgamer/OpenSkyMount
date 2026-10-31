@@ -26,6 +26,8 @@ class AxisParams:
     backlash: float = 0.0
     hard_min: float = -1e9
     hard_max: float = 1e9
+    soft_min: float = -1e9  # firmware travel limits: the axis brakes so it never passes them
+    soft_max: float = 1e9
 
 
 class AxisSim:
@@ -74,19 +76,39 @@ class AxisSim:
     def stopping_distance(self) -> float:
         return self.vel * self.vel / (2.0 * self.p.max_accel)
 
-    def _desired_velocity(self) -> float:
+    def _desired_velocity(self, dt: float) -> float:
         if self.mode == self.POSITION:
             e = self.target - self.count
-            mag = min(math.sqrt(2.0 * self.p.max_accel * abs(e)), self.p.kp * abs(e))
+            a = self.p.max_accel
+            # Largest speed from which a discrete-time deceleration at ``a`` still stops at the
+            # target (avoids the overshoot of the continuous sqrt(2 a e) profile).
+            # Evaluated at the error expected after this step (relative to the moving target).
+            e_next = e - (self.vel - self.ff) * dt * 0.5
+            if e_next * e <= 0:
+                e_next = 0.0
+            braking = a * dt * (math.sqrt(0.25 + 2.0 * abs(e_next) / (a * dt * dt)) - 0.5)
+            mag = min(braking, self.p.kp * abs(e))
             v = self.ff + math.copysign(mag, e)
         elif self.mode == self.VELOCITY:
             v = self.vel_cmd
         else:
             v = 0.0
-        return max(-self.p.max_rate, min(self.p.max_rate, v))
+        v = max(-self.p.max_rate, min(self.p.max_rate, v))
+        # Firmware soft limits: never command a speed from which the axis cannot stop in time.
+        if v > 0:
+            v = min(v, self._braking_speed(self.p.soft_max - self.count - self.vel * dt * 0.5, dt))
+        elif v < 0:
+            v = max(v, -self._braking_speed(self.count - self.p.soft_min + self.vel * dt * 0.5, dt))
+        return v
+
+    def _braking_speed(self, distance: float, dt: float) -> float:
+        if distance <= 0:
+            return 0.0
+        a = self.p.max_accel
+        return a * dt * (math.sqrt(0.25 + 2.0 * distance / (a * dt * dt)) - 0.5)
 
     def step(self, dt: float) -> None:
-        v_des = self._desired_velocity()
+        v_des = self._desired_velocity(dt)
         dv_max = self.p.max_accel * dt
         v_new = self.vel + max(-dv_max, min(dv_max, v_des - self.vel))
         dx = 0.5 * (self.vel + v_new) * dt
@@ -107,6 +129,15 @@ class AxisSim:
             self.motor = max(self.p.hard_min - half, min(self.p.hard_max + half, self.motor))
             self.limit_hit = True
             self.hard_stop()
+
+    @property
+    def active(self) -> bool:
+        """True while the axis is not in smooth steady-state motion."""
+        if self.mode in (self.STOPPING, self.VELOCITY):
+            return abs(self.vel - self.vel_cmd) > 1e-9 if self.mode == self.VELOCITY else True
+        if self.mode == self.POSITION:
+            return abs(self.target - self.count) > 0.005 or abs(self.vel - self.ff) > 0.01
+        return abs(self.vel) > 0.0
 
     @property
     def moving(self) -> bool:
