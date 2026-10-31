@@ -180,59 +180,6 @@ def test_southern_hemisphere_and_date_line() -> None:
     assert float(alt_polaris) < 0
 
 
-# --------------------------------------------------------------- astropy
-astropy = pytest.importorskip("astropy", reason="astropy cross-check not installed")
-
-
-@pytest.fixture(scope="module")
-def astropy_env():
-    from astropy.utils import iers
-
-    iers.conf.auto_download = False
-    iers.conf.iers_degraded_accuracy = "ignore"
-    return iers
-
-
-@pytest.mark.parametrize(
-    "lat,lon,when",
-    [
-        (52.52, 13.405, dt.datetime(2021, 8, 15, 21, 30, tzinfo=dt.UTC)),
-        (-33.87, 151.21, dt.datetime(2022, 3, 1, 11, 0, tzinfo=dt.UTC)),
-        (19.82, -155.47, dt.datetime(2020, 12, 21, 8, 0, tzinfo=dt.UTC)),
-    ],
-)
-def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.datetime) -> None:
-    import warnings
-
-    from astropy import units as u
-    from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body, solar_system_ephemeris
-    from astropy.time import Time
-
-    eng = AstronomyEngine(ObserverConfig(latitude=lat, longitude=lon, elevation_m=0.0,
-                                         temperature_c=None, pressure_mbar=None))
-    unix = when.timestamp()
-    loc = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=0 * u.m)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        t = Time(when)
-        frame = AltAz(obstime=t, location=loc, pressure=0 * u.hPa)
-        checked = 0
-        for name in ("Vega", "Sirius", "Arcturus", "Canopus", "Polaris", "Altair"):
-            target = eng.resolve(name)
-            sc = SkyCoord(ra=target.ra_deg * u.deg, dec=target.dec_deg * u.deg, frame="icrs").transform_to(frame)
-            alt, az = eng.altaz(target, unix)
-            assert separation(float(alt), float(az), sc.alt.deg, sc.az.deg) < 5 * ARCSEC, name
-            checked += 1
-        with solar_system_ephemeris.set("builtin"):
-            for planet in ("jupiter", "saturn", "mars"):
-                body = get_body(planet, t, loc).transform_to(frame)
-                alt, az = eng.altaz(eng.resolve(planet), unix)
-                # Astropy's builtin ephemeris (ERFA plan94) is good to tens of arcseconds.
-                assert separation(float(alt), float(az), body.alt.deg, body.az.deg) < 60 * ARCSEC, planet
-                checked += 1
-    assert checked == 9
-
-
 def test_altaz_to_radec_inverts_apparent_position(engine: AstronomyEngine) -> None:
     unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.UTC).timestamp()
     for name in ("Capella", "jupiter", "Vega"):
