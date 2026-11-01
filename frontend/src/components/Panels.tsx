@@ -86,9 +86,10 @@ export function SearchPanel() {
         </ul>
       )}
       {!q && (
-        <div className="chips">
+        <div className="quick">
+          <span>Try</span>
           {quick.map((n) => (
-            <button key={n} className="chip" onClick={() => setQ(n)}>
+            <button key={n} onClick={() => setQ(n)}>
               {n}
             </button>
           ))}
@@ -150,15 +151,22 @@ export function TargetPanel() {
     };
   }, [selected, epoch, site?.latitude, site?.longitude]);
 
-  if (!selected) return <section className="panel target empty">Select an object on the sky map or search for one.</section>;
-  if (err) return <section className="panel target empty">{err}</section>;
-  if (!info) return <section className="panel target empty">Loading…</section>;
+  const empty = (text: string) => (
+    <section className="panel target empty">
+      <h3 className="label">Target</h3>
+      <p>{text}</p>
+    </section>
+  );
+  if (!selected) return empty("Nothing selected. Click an object on the sky map or search for one.");
+  if (err) return empty(err);
+  if (!info) return empty("Computing position…");
   const ev = info.events;
   return (
     <section className="panel target">
+      <h3 className="label">Target</h3>
       <header>
         <h2>{info.name}</h2>
-        <span className={`badge ${info.above_horizon ? "ok" : "warn"}`}>{info.above_horizon ? "above horizon" : "below horizon"}</span>
+        <span className={`lamp ${info.above_horizon ? "on" : "off"}`}>{info.above_horizon ? "above horizon" : "below horizon"}</span>
       </header>
       <div className="sub">
         {info.type}
@@ -269,6 +277,7 @@ export function MotionPanel() {
   const latched = mode === "emergency_stop" || mode === "fault" || mode === "disconnected";
   return (
     <section className="panel motion">
+      <h3 className="label">Motion</h3>
       <div className="row">
         <button className="estop" onClick={() => command("estop")} title="Software emergency stop (always available). Physical mounts need a hardware E-stop.">
           E-STOP
@@ -296,6 +305,7 @@ export function MotionPanel() {
       <AlignButton enabled={ctl && !latched} />
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} />
       <div className="speed" role="radiogroup" aria-label="Manual speed">
+        <span>Rate</span>
         {[0.05, 0.5, 2, 5].map((s) => (
           <button key={s} className={speed === s ? "sel" : ""} onClick={() => setSpeed(s)} aria-pressed={speed === s}>
             {s}°/s
@@ -365,11 +375,14 @@ function ManualPad({ enabled, speed }: { enabled: boolean; speed: number }) {
   );
   return (
     <div className="manual" aria-label="Manual slew (press and hold)">
-      {btn("▲", 1, 0, "up")}
-      {btn("◀", 0, -1, "left")}
-      <div className="pad-center">hold</div>
-      {btn("▶", 0, 1, "right")}
-      {btn("▼", -1, 0, "down")}
+      {btn("ALT +", 1, 0, "up")}
+      {btn("AZ −", 0, -1, "left")}
+      <div className="pad-center">
+        <span>{speed}°/s</span>
+        <small>press &amp; hold</small>
+      </div>
+      {btn("AZ +", 0, 1, "right")}
+      {btn("ALT −", -1, 0, "down")}
     </div>
   );
 }
@@ -389,6 +402,7 @@ export function ClockPanel() {
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   return (
     <section className="panel clock">
+      <h3 className="label">Observatory time</h3>
       <div className="clock-read">
         <strong>{d.toLocaleString([], { dateStyle: "medium", timeStyle: "medium" })}</strong>
         <small>
@@ -550,7 +564,6 @@ const MODE_LABEL: Record<string, string> = {
 
 export function Telemetry() {
   const m = useStore((s) => s.mount);
-  const latency = useStore((s) => s.latencyMs);
   const sim = useStore((s) => s.config?.capabilities.simulated);
   if (!m) return <footer className="telemetry">Waiting for telemetry…</footer>;
   return (
@@ -595,12 +608,8 @@ export function Telemetry() {
       <div className="tel">
         <label>Motor</label>
         <span>
-          {m.driver.connected ? "link ok" : "no link"} · {m.driver.homed ? "homed" : "not homed"} · {m.driver.motor.alt_mode}/{m.driver.motor.az_mode}
+          {m.driver.connected ? "link ok" : "no link"} · {m.driver.homed ? "homed" : "not homed"}
         </span>
-      </div>
-      <div className="tel">
-        <label>Network</label>
-        <span>{latency != null ? `${latency.toFixed(0)} ms` : "—"}</span>
       </div>
       {(m.flags.length > 0 || m.driver.faults.length > 0) && (
         <div className="tel flags">
@@ -616,7 +625,7 @@ export function EventLog() {
   const events = useStore((s) => s.mount?.events ?? EMPTY);
   return (
     <section className="panel events">
-      <h3>Events</h3>
+      <h3 className="label">Log</h3>
       <ul>
         {[...events].reverse().slice(0, 8).map((e, i) => (
           <li key={`${e.t}-${i}`} className={e.level}>

@@ -20,3 +20,5 @@
 | D16 | MIT license | Compatible with all bundled data and dependencies | GPL (would allow embedding Stellarium/OnStepX code, but limits reuse) |
 | D17 | No UI component library | Small bundle, custom dark astronomy look | MUI/Chakra (heavier) |
 | D18 | Berlin as the default site | A neutral, valid default; the user sets their own site in Settings | Geolocation required (rejected: must be optional) |
+| D19 | UI styled as observatory instrument panel: warm graphite, amber backlight accent, condensed engraved labels, mono LCD-style readouts, hairline rules instead of floating cards; fonts bundled locally | Replace generic dashboard look with one grounded in the subject; keep the app offline-capable | Component-library defaults, web-font CDN |
+| D20 | "Red light" mode via an SVG luminance→red colour matrix on the whole document (covers canvas and WebGL) | Astronomers use red light to keep dark adaptation; pure red output, no green/blue | CSS sepia/hue-rotate chain (left yellow tints) |

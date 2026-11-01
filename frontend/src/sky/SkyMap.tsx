@@ -319,7 +319,7 @@ function skyColors(sunAlt: number): [string, string, string] {
   if (sunAlt > 0) return ["#2a5d9a", "#5b8fc9", "#1f3346"];
   if (sunAlt > -6) return ["#16243f", "#3a4f78", "#141b24"];
   if (sunAlt > -12) return ["#0a1226", "#1a2747", "#0f141b"];
-  return ["#03050b", "#0a1020", "#0c1015"];
+  return ["#030408", "#090c16", "#100d0a"];
 }
 
 function polyline(ctx: CanvasRenderingContext2D, b: Basis, pts: Vec3[], maxJump: number) {
@@ -393,8 +393,8 @@ function render(
       ctx.lineWidth = 1;
       for (const c of cat.lines) for (const seg of c.vecs) polyline(ctx, b, seg.map((v) => mulMV(m, v)), maxJump);
       if (layers.labels && view.fov < 150) {
-        ctx.fillStyle = "rgba(130,170,220,0.55)";
-        ctx.font = "11px system-ui, sans-serif";
+        ctx.fillStyle = "rgba(170,160,140,0.5)";
+        ctx.font = "11px 'Barlow Condensed', 'Arial Narrow', sans-serif";
         ctx.textAlign = "center";
         for (const c of cat.lines) {
           const p = project(b, mulMV(m, c.label), 0);
@@ -406,7 +406,7 @@ function render(
     if (layers.dsos && view.fov < 120) {
       ctx.strokeStyle = "rgba(160,220,170,0.75)";
       ctx.fillStyle = "rgba(160,220,170,0.8)";
-      ctx.font = "10px system-ui, sans-serif";
+      ctx.font = "10px 'Barlow Condensed', 'Arial Narrow', sans-serif";
       ctx.textAlign = "left";
       for (const d of cat.dsos) {
         if ((d.mag ?? 9) > limitMag + 3) continue;
@@ -422,7 +422,7 @@ function render(
 
     // Stars.
     const sv = cat.starVec;
-    ctx.font = "11px system-ui, sans-serif";
+    ctx.font = "11px 'Barlow Condensed', 'Arial Narrow', sans-serif";
     ctx.textAlign = "left";
     const zoomBoost = Math.max(0, Math.log2(100 / view.fov)) * 0.4;
     for (let i = 0; i < cat.stars.length; i++) {
@@ -471,7 +471,7 @@ function render(
       }
       if (layers.labels) {
         ctx.fillStyle = "#ffe6b0";
-        ctx.font = "12px system-ui, sans-serif";
+        ctx.font = "12px 'Barlow Condensed', 'Arial Narrow', sans-serif";
         ctx.fillText(body.name, p[0] + r + 4, p[1] - 4);
       }
       hits.push({ id: body.id, x: p[0], y: p[1] });
@@ -501,8 +501,8 @@ function render(
   const hz: Vec3[] = [];
   for (let az = 0; az <= 360; az += 2) hz.push(altazToVec(0, az));
   polyline(ctx, b, hz, maxJump);
-  ctx.fillStyle = "#ffcf8a";
-  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#f0a23a";
+  ctx.font = "bold 13px 'Barlow Condensed', 'Arial Narrow', sans-serif";
   ctx.textAlign = "center";
   ["N", "NE", "E", "SE", "S", "SW", "W", "NW"].forEach((label, i) => {
     const p = project(b, altazToVec(-2.5, i * 45), 0);
@@ -533,7 +533,7 @@ function render(
       ctx.lineTo(p[0], p[1] + 16);
       ctx.stroke();
       ctx.fillStyle = "#ff8fa3";
-      ctx.font = "11px system-ui, sans-serif";
+      ctx.font = "11px 'Barlow Condensed', 'Arial Narrow', sans-serif";
       ctx.textAlign = "left";
       ctx.fillText("mount", p[0] + 12, p[1] + 20);
     }
@@ -541,8 +541,8 @@ function render(
   hitsRef.current = hits;
 
   // Scale / info overlay.
-  ctx.fillStyle = "rgba(200,210,230,0.6)";
-  ctx.font = "11px system-ui, sans-serif";
+  ctx.fillStyle = "rgba(200,190,175,0.6)";
+  ctx.font = "11px 'Barlow Condensed', 'Arial Narrow', sans-serif";
   ctx.textAlign = "left";
   ctx.fillText(`FOV ${view.fov.toFixed(0)}° · view az ${view.az.toFixed(0)}° alt ${view.alt.toFixed(0)}° · ${fr?.f.sky_state ?? "loading…"}`, 10, h - 10);
 }

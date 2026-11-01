@@ -8,6 +8,12 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%2305070d' stroke='%2363a4ff' stroke-width='2'/><circle cx='11' cy='12' r='1.6' fill='white'/><circle cx='21' cy='9' r='1' fill='white'/><circle cx='18' cy='20' r='2' fill='%23ffd479'/></svg>" />
   </head>
   <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <!-- Red-light mode: luminance mapped onto the red channel only (no green/blue light). -->
+      <filter id="night-red" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.40 0.55 0.15 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" />
+      </filter>
+    </svg>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -27,6 +27,7 @@ mount**, so behaviour on real hardware is *not verified*. See [docs/PROGRESS.md]
 - **Safety policy**: the Sun is blocked by default, with a 15° solar exclusion zone. Software E-stop is available
   from every client and takes precedence over everything else. Manual slewing has a dead-man timer, and firmware
   soft limits are enforced.
+- **Red-light mode** for use at the telescope (whole interface rendered in pure red to preserve dark adaptation).
 - **Multi-device**: WebSocket state sync. One client holds control authority at a time; the others observe.
   Commands carry sequence numbers, so stale ones are rejected.
 - **Hardware path**: an OSM/1 line protocol, a *fake firmware* TCP endpoint and a protocol driver. Integration

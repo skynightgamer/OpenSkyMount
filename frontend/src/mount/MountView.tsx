@@ -13,7 +13,7 @@ function textSprite(text: string, color: string): THREE.Sprite {
   c.height = 128;
   const g = c.getContext("2d")!;
   g.fillStyle = color;
-  g.font = "bold 72px system-ui, sans-serif";
+  g.font = "600 72px \"Barlow Condensed\", sans-serif";
   g.textAlign = "center";
   g.textBaseline = "middle";
   g.fillText(text, 64, 64);
@@ -83,7 +83,7 @@ export default function MountView() {
     renderer.shadowMap.enabled = true;
     wrap.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x070a12);
+    scene.background = new THREE.Color(0x0d0c0b);
     const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 100);
     camera.position.set(1.05, 1.15, 1.35);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -100,19 +100,19 @@ export default function MountView() {
     scene.add(sun);
 
     // Ground with compass rose.
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(3, 64), new THREE.MeshStandardMaterial({ color: 0x141922, roughness: 1 }));
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(3, 64), new THREE.MeshStandardMaterial({ color: 0x17140f, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.17, 96), new THREE.MeshBasicMaterial({ color: 0x334055 }));
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.17, 96), new THREE.MeshBasicMaterial({ color: 0x3a3227 }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.002;
     scene.add(ring);
     const dirs: [string, number, number, string][] = [
-      ["N", 0, -1.35, "#ff6b6b"],
-      ["E", 1.35, 0, "#c8d2e4"],
-      ["S", 0, 1.35, "#c8d2e4"],
-      ["W", -1.35, 0, "#c8d2e4"],
+      ["N", 0, -1.35, "#f0a23a"],
+      ["E", 1.35, 0, "#9a9184"],
+      ["S", 0, 1.35, "#9a9184"],
+      ["W", -1.35, 0, "#9a9184"],
     ];
     for (const [t, x, z, col] of dirs) {
       const s = textSprite(t, col);

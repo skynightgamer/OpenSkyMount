@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ClockPanel,
   ControlAuthority,
@@ -24,20 +24,39 @@ export default function App() {
   const site = useStore((s) => s.config?.config.observer);
   const caps = useStore((s) => s.config?.capabilities);
   const toasts = useStore((s) => s.toasts);
+  const latency = useStore((s) => s.latencyMs);
   const toggle = (k: keyof Layers) => setLayers({ ...layers, [k]: !layers[k] });
+  const [night, setNight] = useState(() => {
+    try {
+      return localStorage.getItem("osm-night") === "1";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    // Red-light mode preserves the observer's dark adaptation (applies to canvas and 3D too).
+    document.documentElement.classList.toggle("night", night);
+    try {
+      localStorage.setItem("osm-night", night ? "1" : "0");
+    } catch {
+      /* per-device preference only */
+    }
+  }, [night]);
 
   return (
     <div className={`app tab-${tab}`}>
       <header className="topbar">
-        <div className="brand">
-          <span className="logo">◎</span> OpenSkyMount
-        </div>
+        <div className="brand">OpenSkyMount</div>
         <div className="site" title="Observer location">
           {site ? `${site.name} · ${site.latitude.toFixed(3)}°, ${site.longitude.toFixed(3)}°` : "…"}
         </div>
-        <div className={`conn conn-${conn}`}>{conn === "open" ? (caps?.simulated ? "Simulator connected" : caps?.name) : conn}</div>
-        <button className="icon" onClick={() => setSettings(true)} disabled={!site} aria-label="Settings">
-          ⚙
+        <div className={`conn conn-${conn}`}>{conn === "open" ? (caps?.simulated ? "Simulator connected" : caps?.name) : conn}
+          {conn === "open" && latency != null && <span className="latency">{latency.toFixed(0)} ms</span>}</div>
+        <button className={night ? "sel" : ""} onClick={() => setNight(!night)} aria-pressed={night} title="Red light for use at the telescope">
+          Red light
+        </button>
+        <button onClick={() => setSettings(true)} disabled={!site}>
+          Settings
         </button>
       </header>
       <nav className="tabs" role="tablist">
