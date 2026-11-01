@@ -1,8 +1,5 @@
 # Next tasks (ordered)
 
-0. **Blocking for persistence (owner action)**: grant the Claude GitHub App write access to
-   `skynightgamer/OpenSkyMount` (https://github.com/apps/claude/installations/select_target), then push the branch
-   `claude/gallant-turing-py2w4q`.
 1. Multi-star pointing model (azimuth/altitude zero, base tilt, cone error) fitted from ≥ 3 Sync or plate-solve
    points. Replace the single offset in `controller.py`. Test with the `sim.tilt_*` errors.
 2. ASCOM Alpaca Telescope device endpoint (`/api/v1/telescope/0/...`) so N.I.N.A., Stellarium and similar can drive

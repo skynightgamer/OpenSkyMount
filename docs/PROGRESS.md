@@ -17,7 +17,7 @@ _Last updated: 2026-10-31 (first autonomous session)._ Branch: `claude/gallant-t
 - **Session 1 (2026-10-31)**: built the complete vertical slice. 77 backend tests, 6 frontend unit tests and the
   browser E2E pass. Found and fixed a tracking-lead bug (16″ → 2″) and an overshoot in the braking law.
   **Pushing to GitHub failed**: the Claude GitHub App has no write access to the repository (HTTP 403 for both git
-  push and API writes). All work is committed locally on the branch. See NEXT_TASKS #0.
+  push and API writes). Resolved on 2026-11-01: access granted and the branch pushed.
 - **Backup**: because the push was refused, a git bundle of this branch is stored as a private artifact owned by the
   repository owner: https://claude.ai/artifact/MtWgURoJfMZABUGyfav7cE (restore steps are on the page; file
   `openskymount-bundle.b64.txt`).
