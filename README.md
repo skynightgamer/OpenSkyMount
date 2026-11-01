@@ -56,8 +56,16 @@ scripts/run.sh            # http://localhost:8000
 To let other devices on your Wi-Fi watch or control the mount:
 
 ```bash
-scripts/run.sh --lan      # then open http://<your-computer-ip>:8000 on the phone/tablet
+OPENSKYMOUNT_PASSWORD='choose-a-password' scripts/run.sh --lan   # then open http://<your-computer-ip>:8000
 ```
+
+With a password set, every device has to log in first (the session is kept in a cookie). E-STOP on the login
+screen works without the password. The connection is plain HTTP, so this keeps other people on your network away
+from the controls but is no protection against a hostile network. Without a password the server prints a warning
+when it listens on the network.
+
+Angles (sexagesimal or decimal) and the time zone used for all times are set per device under
+**Settings → Display**.
 
 Try it out:
 

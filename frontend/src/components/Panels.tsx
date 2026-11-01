@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fixedAngle, fixedDMS, fixedNum } from "../format";
-import { formatDMS, formatRA } from "../sky/projection";
+import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, timeZones, toZonedInput, zoneLabel } from "../format";
 import { ExposurePlanner, TonightList } from "./Planner";
 import {
   command,
@@ -9,6 +8,7 @@ import {
   releaseControl,
   requestControl,
   select,
+  setPrefs,
   simNow,
   toast,
   useStore,
@@ -16,8 +16,6 @@ import {
 
 const EMPTY: never[] = [];
 const fmt = (v: number | null | undefined, d = 2, unit = "°") => (v == null || Number.isNaN(v) ? "—" : `${v.toFixed(d)}${unit}`);
-const timeStr = (unix: number | null | undefined) =>
-  unix == null ? "—" : new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // ------------------------------------------------------------------ search
 interface Hit {
@@ -118,6 +116,7 @@ export function TargetPanel() {
   const selected = useStore((s) => s.selectedId);
   const epoch = useStore((s) => s.clock?.epoch);
   const site = useStore((s) => s.config?.config.observer);
+  const prefs = useStore((s) => s.prefs);
   const [info, setInfo] = useState<Info | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -151,6 +150,8 @@ export function TargetPanel() {
   if (err) return empty(err);
   if (!info) return empty("Computing position…");
   const ev = info.events;
+  const A = angleFmt(prefs);
+  const timeStr = (unix: number | null | undefined) => formatTime(unix, prefs.timeZone);
   return (
     <section className="panel target">
       <h3 className="label">Target</h3>
@@ -166,20 +167,20 @@ export function TargetPanel() {
       </div>
       <dl className="grid2">
         <dt>RA (J2000)</dt>
-        <dd>{formatRA(info.ra_j2000)}</dd>
+        <dd>{A.ra(info.ra_j2000)}</dd>
         <dt>Dec (J2000)</dt>
-        <dd>{formatDMS(info.dec_j2000)}</dd>
+        <dd>{A.dec(info.dec_j2000)}</dd>
         <dt>Altitude</dt>
-        <dd>{fmt(info.alt, 3)}</dd>
+        <dd>{A.alt(info.alt)}</dd>
         <dt>Azimuth</dt>
-        <dd>{fmt(info.az, 3)}</dd>
+        <dd>{A.az(info.az)}</dd>
         <dt>Alt / Az rate</dt>
         <dd>
           {(info.alt_rate * 3600).toFixed(0)}″/s · {(info.az_rate * 3600).toFixed(0)}″/s
         </dd>
         <dt>Field rotation</dt>
         <dd>{info.field_rotation_rate == null ? "—" : `${(info.field_rotation_rate * 3600).toFixed(1)}″/s`}</dd>
-        <dt>Rise · Transit · Set</dt>
+        <dt>Rise · Transit · Set ({zoneLabel(info.events?.transit ?? simNow(), prefs.timeZone)})</dt>
         <dd>
           {ev?.circumpolar ? "circumpolar" : ev?.never_rises ? "does not rise" : `${timeStr(ev?.rise)} · ${timeStr(ev?.transit)} · ${timeStr(ev?.set)}`}
         </dd>
@@ -359,6 +360,7 @@ export function ClockPanel() {
   const clock = useStore((s) => s.clock);
   const ctl = useStore((s) => isController(s));
   const warp = useStore((s) => s.config?.capabilities.supports_time_warp ?? false);
+  const tz = useStore((s) => s.prefs.timeZone);
   const [, force] = useState(0);
   useEffect(() => {
     const id = setInterval(() => force((x) => x + 1), 1000);
@@ -366,12 +368,14 @@ export function ClockPanel() {
   }, []);
   const now = simNow();
   const d = new Date(now * 1000);
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  const local = toZonedInput(now, tz);
   return (
     <section className="panel clock">
       <h3 className="label">Observatory time</h3>
       <div className="clock-read">
-        <strong>{d.toLocaleString([], { dateStyle: "medium", timeStyle: "medium" })}</strong>
+        <strong>
+          {formatDateTime(now, tz)} <span className="zone">{zoneLabel(now, tz)}</span>
+        </strong>
         <small>
           UTC {d.toISOString().slice(11, 19)} · {clock?.live ? "live" : clock?.rate === 0 ? "paused" : `simulated ×${clock?.rate}`}
         </small>
@@ -390,12 +394,12 @@ export function ClockPanel() {
             type="datetime-local"
             disabled={!ctl}
             defaultValue={local}
-            key={clock?.epoch}
+            key={`${clock?.epoch}-${tz}`}
             onChange={(e) => {
-              const t = new Date(e.target.value).getTime() / 1000;
+              const t = fromZonedInput(e.target.value, tz);
               if (Number.isFinite(t)) command("set_clock", { time: t });
             }}
-            aria-label="Set simulation date and time (local)"
+            aria-label={`Set simulation date and time (${resolveZone(tz)})`}
           />
         </div>
       )}
@@ -441,7 +445,8 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           <h2>Settings</h2>
           <button onClick={onClose} aria-label="Close">Close</button>
         </header>
-        {!ctl && <p className="warn-text">Take control to change settings.</p>}
+        <DisplaySettings />
+        {!ctl && <p className="warn-text">Take control to change the settings below.</p>}
         <fieldset>
           <legend>Observer location</legend>
           <label>
@@ -502,6 +507,42 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+// Per-device display settings: applied at once, stored in this browser, no control authority needed.
+function DisplaySettings() {
+  const prefs = useStore((s) => s.prefs);
+  const zones = useState(() => timeZones())[0];
+  const now = simNow();
+  return (
+    <fieldset>
+      <legend>Display (this device)</legend>
+      <label>
+        <span>Angles</span>
+        <select value={prefs.angles} onChange={(e) => setPrefs({ angles: e.target.value as "dms" | "decimal" })} aria-label="Angle format">
+          <option value="dms">Sexagesimal</option>
+          <option value="decimal">Decimal degrees</option>
+        </select>
+      </label>
+      <label>
+        <span>Time zone</span>
+        <select value={prefs.timeZone} onChange={(e) => setPrefs({ timeZone: e.target.value })} aria-label="Time zone">
+          <option value="device">This device ({resolveZone("device")})</option>
+          {zones.map((z) => (
+            <option key={z} value={z}>
+              {z}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="hint">
+        Sexagesimal: 18h 36m 56s, +38° 47′ 01″. Decimal: 279.2347°, +38.7837°. Times are shown in{" "}
+        {resolveZone(prefs.timeZone)}
+        {zoneLabel(now, prefs.timeZone) !== resolveZone(prefs.timeZone) ? ` (${zoneLabel(now, prefs.timeZone)})` : ""}. Saved in this
+        browser only; other devices keep their own choice.
+      </p>
+    </fieldset>
+  );
+}
+
 function FaultButtons({ faults }: { faults: string[] }) {
   const active = useStore((s) => s.mount?.driver.motor.injected_faults ?? EMPTY);
   const ctl = useStore((s) => isController(s));
@@ -543,15 +584,17 @@ function Cell({ label, value, title, className = "" }: { label: string; value: s
 export function Telemetry() {
   const m = useStore((s) => s.mount);
   const sim = useStore((s) => s.config?.capabilities.simulated);
+  const prefs = useStore((s) => s.prefs);
   if (!m) return <footer className="telemetry waiting">Waiting for telemetry…</footer>;
   const p = m.position;
   const flags = [...m.driver.faults, ...m.flags];
   const rate = (r: number) => `${fixedNum(r * 3600, 5, 0, true)}″/s`;
+  const A = angleFmt(prefs);
   return (
-    <footer className="telemetry">
+    <footer className={`telemetry angles-${prefs.angles}`}>
       <div className={`mode mode-${m.mode}`}>{MODE_LABEL[m.mode] ?? m.mode}</div>
-      <Cell label="Mount alt / az" value={`${fixedNum(p.alt, 2, 3, true)}° / ${fixedNum(p.az, 3, 3)}°`} />
-      <Cell label="RA / Dec" className="radec" value={p.ra != null ? `${formatRA(p.ra)}  ${fixedDMS(p.dec)}` : "—"} />
+      <Cell label="Mount alt / az" value={`${A.alt(p.alt)} / ${A.az(p.az)}`} />
+      <Cell label="RA / Dec" className="radec" value={p.ra != null ? `${A.ra(p.ra)}  ${A.dec(p.dec)}` : "—"} />
       <div className="tel target-cell" title={m.target?.name}>
         <label>Target</label>
         <span>{m.target ? m.target.name : "none"}</span>
@@ -577,13 +620,14 @@ export function Telemetry() {
 
 export function EventLog() {
   const events = useStore((s) => s.mount?.events ?? EMPTY);
+  const tz = useStore((s) => s.prefs.timeZone);
   return (
     <section className="panel events">
       <h3 className="label">Log</h3>
       <ul>
         {[...events].reverse().slice(0, 8).map((e, i) => (
           <li key={`${e.t}-${i}`} className={e.level}>
-            <time>{new Date(e.t * 1000).toLocaleTimeString()}</time> {e.msg}
+            <time>{formatTime(e.t, tz, true)}</time> {e.msg}
           </li>
         ))}
       </ul>

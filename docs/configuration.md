@@ -26,7 +26,21 @@ keys and wrong types are rejected.
 | sim | seed, physics_step_s | 42, 0.02 | Determinism and physics resolution |
 
 Environment variables: `OPENSKYMOUNT_HOST`, `OPENSKYMOUNT_PORT`, `OPENSKYMOUNT_STATE`, `OPENSKYMOUNT_DRIVER`
-(`sim` or `tcp://host:port` or `serial:///dev/ttyUSB0@115200`).
+(`sim` or `tcp://host:port` or `serial:///dev/ttyUSB0@115200`), `OPENSKYMOUNT_PASSWORD` (at least 6 characters;
+same as `--password`, but not visible in the process list).
+
+Display preferences are not server settings: angle format (sexagesimal or decimal) and time zone (this device,
+UTC or any IANA zone) are stored in each browser under **Settings → Display**.
+
+## Password (LAN mode)
+When a password is set, everything under `/api/` except `health`, `auth`, `login`, `logout` and `estop` returns 401
+without a session, and `/ws` closes with code 4401.
+- `GET /api/auth` → `{required, authenticated}`
+- `POST /api/login {"password": "..."}` → sets the `osm_session` cookie (HttpOnly, SameSite=Strict); 401 for a
+  wrong password, 429 after 5 failures per minute
+- `POST /api/logout`
+- `POST /api/estop` → software emergency stop, always accepted
+- Scripts can send `Authorization: Bearer <password>` instead of a cookie.
 
 ## API summary
 - `GET /api/health`, `/api/config`, `/api/status`, `/api/catalog?tier=bright|faint` (≤ 6.5 / 6.5–8 mag,

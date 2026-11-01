@@ -12,7 +12,7 @@ import {
 import { AlignmentPanel } from "./components/Planner";
 import MountView from "./mount/MountView";
 import SkyMap, { type Layers } from "./sky/SkyMap";
-import { useStore } from "./store";
+import { estopHttp, login, logout, toast, useStore } from "./store";
 
 type Tab = "sky" | "mount" | "control";
 const LAYER_LABEL: Record<keyof Layers, string> = {
@@ -23,7 +23,61 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   dsos: "Messier",
 };
 
+function Login() {
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const toasts = useStore((s) => s.toasts);
+  return (
+    <div className="login">
+      <form
+        className="login-box"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          setErr(await login(pw));
+          setBusy(false);
+        }}
+      >
+        <h1>OpenSkyMount</h1>
+        <p>This mount is password protected.</p>
+        <label>
+          <span>Password</span>
+          <input type="password" autoComplete="current-password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} />
+        </label>
+        {err && <p className="login-error" role="alert">{err}</p>}
+        <button className="primary" type="submit" disabled={busy || !pw}>
+          {busy ? "Checking…" : "Log in"}
+        </button>
+        <hr />
+        <p className="login-note">Emergency stop works without the password.</p>
+        <button
+          type="button"
+          className="estop"
+          onClick={async () => toast((await estopHttp()) ? "Emergency stop sent" : "Emergency stop failed: server not reachable", "error")}
+        >
+          E-STOP
+        </button>
+      </form>
+      <div className="toasts" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast ${t.level}`}>
+            {t.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const auth = useStore((s) => s.auth);
+  if (auth === "required") return <Login />;
+  if (auth === "unknown") return null; // wait for /api/auth so nothing fetches protected data first
+  return <Main />;
+}
+
+function Main() {
   const [tab, setTab] = useState<Tab>("sky");
   const [settings, setSettings] = useState(false);
   const [follow, setFollow] = useState(false);
@@ -33,6 +87,7 @@ export default function App() {
   const caps = useStore((s) => s.config?.capabilities);
   const toasts = useStore((s) => s.toasts);
   const latency = useStore((s) => s.latencyMs);
+  const authEnabled = useStore((s) => s.authEnabled);
   const toggle = (k: keyof Layers) => setLayers({ ...layers, [k]: !layers[k] });
   const [night, setNight] = useState(() => {
     try {
@@ -66,6 +121,7 @@ export default function App() {
         <button onClick={() => setSettings(true)} disabled={!site}>
           Settings
         </button>
+        {authEnabled && <button onClick={() => void logout()}>Log out</button>}
       </header>
       <nav className="tabs" role="tablist">
         {(["sky", "mount", "control"] as Tab[]).map((t) => (

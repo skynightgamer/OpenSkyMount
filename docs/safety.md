@@ -44,5 +44,10 @@ Software is only one layer of protection. **A software emergency stop does not r
 - The software has not run on any physical hardware. The behaviour of real drivers, sensors and power systems
   remains unverified.
 - Path checking against the Sun samples a straight alt/az path. Real slew paths are close to that but not identical.
-- Authentication is not implemented. The server should only run on a trusted local network. Use `--host 127.0.0.1`
-  (the default) unless you need LAN access.
+- Authentication is optional and basic: `OPENSKYMOUNT_PASSWORD` (or `--password`) requires a login for the UI, the
+  REST API and the WebSocket. It runs over plain HTTP (no TLS), so the password and session cookie can be read by
+  anyone who can sniff the network. Use it on a trusted local network only; the default `--host 127.0.0.1` needs no
+  password. Failed logins are limited to 5 per minute per address. Sessions are in memory (a restart logs everyone
+  out).
+- `POST /api/estop` deliberately needs no login, so the login screen can always stop the mount. Anyone who can reach
+  the server can therefore stop (never move) the mount.

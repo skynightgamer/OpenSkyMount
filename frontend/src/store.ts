@@ -1,5 +1,6 @@
 // Global client state + WebSocket connection to the OpenSkyMount server.
 import { useSyncExternalStore } from "react";
+import { DEFAULT_PREFS, type DisplayPrefs, isValidZone } from "./format";
 
 export interface TargetSummary {
   id: string;
@@ -104,6 +105,23 @@ export interface State {
   selectedId: string | null;
   toasts: Toast[];
   latencyMs: number | null;
+  /** "unknown" until /api/auth answered; "required" shows the login screen. */
+  auth: "unknown" | "required" | "ok";
+  /** True when the server has a password set (shows the log-out button). */
+  authEnabled: boolean;
+  prefs: DisplayPrefs;
+}
+
+const PREFS_KEY = "osm-display";
+function loadPrefs(): DisplayPrefs {
+  try {
+    const p = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") } as DisplayPrefs;
+    if (p.angles !== "dms" && p.angles !== "decimal") p.angles = DEFAULT_PREFS.angles;
+    if (typeof p.timeZone !== "string" || !isValidZone(p.timeZone)) p.timeZone = DEFAULT_PREFS.timeZone;
+    return p;
+  } catch {
+    return { ...DEFAULT_PREFS };
+  }
 }
 
 let state: State = {
@@ -117,7 +135,21 @@ let state: State = {
   selectedId: null,
   toasts: [],
   latencyMs: null,
+  auth: "unknown",
+  authEnabled: false,
+  prefs: loadPrefs(),
 };
+
+/** Display preferences are per device (kept in this browser only). */
+export function setPrefs(patch: Partial<DisplayPrefs>): void {
+  const prefs = { ...state.prefs, ...patch };
+  setState({ prefs });
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    /* private mode: preference lasts for this page only */
+  }
+}
 
 const listeners = new Set<() => void>();
 
@@ -174,6 +206,54 @@ function clientName(): string {
 }
 const NAME = clientName();
 
+let reconnectTimer: number | undefined;
+
+/** Check whether the server wants a login, then open the WebSocket. */
+export async function start(): Promise<void> {
+  try {
+    const r = await fetch("/api/auth");
+    const a = (await r.json()) as { required: boolean; authenticated: boolean };
+    setState({ authEnabled: a.required, auth: a.required && !a.authenticated ? "required" : "ok" });
+    if (a.required && !a.authenticated) return;
+  } catch {
+    // Server unreachable: show the app; the socket below retries with backoff and reports the connection state.
+    setState({ auth: "ok" });
+  }
+  connect();
+}
+
+export async function login(password: string): Promise<string | null> {
+  try {
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+    const body = (await r.json().catch(() => ({}))) as { message?: string };
+    if (!r.ok) return body.message ?? `login failed (${r.status})`;
+  } catch {
+    return "server not reachable";
+  }
+  setState({ auth: "ok" });
+  connect();
+  return null;
+}
+
+export async function logout(): Promise<void> {
+  await fetch("/api/logout", { method: "POST" }).catch(() => {});
+  clearTimeout(reconnectTimer);
+  const sock = ws;
+  ws = null;
+  sock?.close();
+  setState({ auth: "required", connection: "closed", sessionId: null });
+}
+
+/** Emergency stop over plain HTTP: works without a login (used on the login screen). */
+export async function estopHttp(): Promise<boolean> {
+  try {
+    const r = await fetch("/api/estop", { method: "POST" });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function connect(): void {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   setState({ connection: "connecting" });
@@ -186,14 +266,20 @@ export function connect(): void {
     pingTimer = window.setInterval(() => send({ type: "ping", t: performance.now() }), 3000);
   };
   sock.onmessage = (ev) => handle(JSON.parse(ev.data));
-  sock.onclose = () => {
+  sock.onclose = (ev) => {
     clearInterval(pingTimer);
     pending.forEach((resolve) => resolve({ ok: false, message: "connection lost" }));
     pending.clear();
     // A new connection is a new session: control must be re-acquired explicitly.
     setState({ connection: "closed", sessionId: null });
+    if (ws !== sock) return; // closed on purpose (log out)
+    if (ev.code === 4401) {
+      // Session no longer valid (server restarted or logged out elsewhere): ask for the password again.
+      setState({ auth: "required", authEnabled: true });
+      return;
+    }
     const delay = Math.min(10000, 500 * 2 ** retry++);
-    setTimeout(connect, delay);
+    reconnectTimer = window.setTimeout(connect, delay);
   };
 }
 

@@ -16,13 +16,21 @@ def main() -> None:
                         help="directory for persisted settings")
     parser.add_argument("--driver", default=os.environ.get("OPENSKYMOUNT_DRIVER", "sim"),
                         help="sim (default) | tcp://host:port (OSM protocol, e.g. fake firmware)")
+    parser.add_argument("--password", default=os.environ.get("OPENSKYMOUNT_PASSWORD") or None,
+                        help="require this password to open the UI (recommended with --host 0.0.0.0). "
+                        "Prefer the OPENSKYMOUNT_PASSWORD environment variable: command lines are visible to other users")
     args = parser.parse_args()
+    if args.password is not None and len(args.password) < 6:
+        parser.error("--password must have at least 6 characters")
+    if args.host not in ("127.0.0.1", "localhost", "::1") and not args.password:
+        print("WARNING: listening on the network without a password; anyone on this network can control the mount. "
+              "Set OPENSKYMOUNT_PASSWORD or --password.")
 
     import uvicorn
 
     from .app import create_app
 
-    app = create_app(state_dir=Path(args.state_dir), driver=args.driver)
+    app = create_app(state_dir=Path(args.state_dir), driver=args.driver, password=args.password)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

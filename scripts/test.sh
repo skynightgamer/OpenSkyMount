@@ -11,8 +11,11 @@ if [[ "${1:-}" == "--e2e" ]]; then
   (cd frontend && npm run build)
   backend/.venv/bin/python -m openskymount.server --port 8765 --state-dir "$(mktemp -d)" > /tmp/osm-e2e.log 2>&1 &
   PID=$!
-  trap 'kill $PID' EXIT
+  OPENSKYMOUNT_PASSWORD=e2e-secret-pw backend/.venv/bin/python -m openskymount.server --port 8767 --state-dir "$(mktemp -d)" > /tmp/osm-e2e-auth.log 2>&1 &
+  PID2=$!
+  trap 'kill $PID $PID2' EXIT
   sleep 3
   (cd frontend && node e2e/smoke.cjs http://127.0.0.1:8765 "${SHOTS:-/tmp}")
+  (cd frontend && node e2e/auth.cjs http://127.0.0.1:8767 e2e-secret-pw)
 fi
 echo "All checks passed."

@@ -9,9 +9,9 @@ import {
   pixelScale,
   type Camera,
 } from "../sky/exposure";
+import { formatTime } from "../format";
 import { command, isController, select, simNow, toast, useStore } from "../store";
 
-const clock = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 // ------------------------------------------------------------------ tonight
 interface TonightTarget {
@@ -45,6 +45,8 @@ const KINDS: [string, string][] = [
 export function TonightList() {
   const site = useStore((s) => s.config?.config.observer);
   const epoch = useStore((s) => s.clock?.epoch);
+  const tz = useStore((s) => s.prefs.timeZone);
+  const clock = (unix: number) => formatTime(unix, tz);
   const [kind, setKind] = useState("all");
   const [minAlt, setMinAlt] = useState(30);
   const [expanded, setExpanded] = useState(false);

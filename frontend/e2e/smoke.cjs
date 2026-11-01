@@ -55,6 +55,19 @@ async function waitText(page, selector, re, timeout = 30000) {
   await a.locator(".exposure summary").click();
   await waitText(a, ".exp-out", /Max on this mount \(tracking\)\s*\d/);
   console.log("Exposure:", (await a.locator(".exp-out").innerText()).replace(/\s+/g, " "));
+  // Display options (per device): decimal angles and an explicit time zone.
+  await a.getByRole("button", { name: "Settings" }).click();
+  await a.getByLabel("Angle format").selectOption("decimal");
+  await a.getByLabel("Time zone").selectOption("Asia/Tokyo");
+  await a.getByRole("button", { name: "Cancel" }).click();
+  await waitText(a, ".target > dl", /RA \(J2000\)\s*\d{1,3}\.\d{4}°/);
+  await waitText(a, ".clock-read", /GMT\+9/);
+  console.log("Decimal/Tokyo:", (await a.locator(".clock-read strong").innerText()).trim());
+  await a.getByRole("button", { name: "Settings" }).click();
+  await a.getByLabel("Angle format").selectOption("dms");
+  await a.getByLabel("Time zone").selectOption("device");
+  await a.getByRole("button", { name: "Cancel" }).click();
+  await waitText(a, ".target > dl", /RA \(J2000\)\s*\d\dh \d\dm/);
   await a.getByRole("button", { name: "GoTo & track" }).click();
   await waitText(a, ".telemetry .mode", /Slewing|Tracking/);
 

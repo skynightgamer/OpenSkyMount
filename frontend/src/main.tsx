@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import { connect } from "./store";
+import { start } from "./store";
 import "./styles.css";
 
-connect();
+void start();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />

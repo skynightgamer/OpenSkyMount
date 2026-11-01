@@ -71,7 +71,7 @@ function requestFaint(): void {
   if (faintRequested) return;
   faintRequested = true;
   fetch("/api/catalog?tier=faint")
-    .then((r) => r.json())
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`catalog: HTTP ${r.status}`))))
     .then((c: { stars: Catalog["stars"] }) => (faintTier = prepareStars(c.stars)))
     .catch(() => (faintRequested = false));
 }
@@ -84,7 +84,7 @@ let catalogPromise: Promise<Prepared> | null = null;
 export function loadCatalog(): Promise<Prepared> {
   if (!catalogPromise) {
     catalogPromise = fetch("/api/catalog")
-      .then((r) => r.json())
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`catalog: HTTP ${r.status}`))))
       .then((c: Catalog) => {
         const starVec = new Float64Array(c.stars.length * 3);
         c.stars.forEach((s, i) => starVec.set(radecToVec(s[1], s[2]), i * 3));
@@ -99,6 +99,10 @@ export function loadCatalog(): Promise<Prepared> {
           })),
           dsos: c.dsos.map((d) => ({ ...d, v: radecToVec(d.ra, d.dec) })),
         };
+      })
+      .catch((e) => {
+        catalogPromise = null; // do not cache a failure: the next mount retries
+        throw e;
       });
   }
   return catalogPromise;
@@ -146,7 +150,9 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
 
   // Catalog (once) and sky frames (periodically and on time jumps / site changes).
   useEffect(() => {
-    loadCatalog().then((c) => (catRef.current = c));
+    loadCatalog()
+      .then((c) => (catRef.current = c))
+      .catch(() => {});
   }, []);
   useEffect(() => {
     let stop = false;

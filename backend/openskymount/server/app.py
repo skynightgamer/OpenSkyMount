@@ -13,7 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +25,7 @@ from ..config import PAYLOADS, AppConfig
 from ..mount.controller import CommandError, MountController
 from ..mount.driver import MountDriver
 from ..mount.sim_driver import INJECTABLE_FAULTS, SimulatedMountDriver
+from .auth import COOKIE, OPEN_PATHS, Auth, RateLimited
 from .sessions import SessionManager
 
 log = logging.getLogger("openskymount")
@@ -284,8 +285,15 @@ class Observatory:
         raise CommandError(f"unknown command {cmd!r}")
 
 
-def create_app(observatory: Observatory | None = None, state_dir: Path | None = None, driver: str | None = None) -> FastAPI:
+def create_app(
+    observatory: Observatory | None = None,
+    state_dir: Path | None = None,
+    driver: str | None = None,
+    password: str | None = None,
+) -> FastAPI:
+    """``password``: require a login for the UI and API (``None`` = open, the default for localhost use)."""
     obs_holder: dict[str, Observatory] = {}
+    auth = Auth(password or None)
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
@@ -303,8 +311,66 @@ def create_app(observatory: Observatory | None = None, state_dir: Path | None = 
 
     app = FastAPI(title="OpenSkyMount", version=__version__, lifespan=lifespan)
 
+    app.state.auth = auth
+
     def obsv() -> Observatory:
         return obs_holder["o"]
+
+    @app.middleware("http")
+    async def require_login(request: Request, call_next):  # type: ignore[no-untyped-def]
+        path = request.url.path
+        if (
+            auth.required
+            and path.startswith("/api/")
+            and path not in OPEN_PATHS
+            and not auth.authorized(request.cookies.get(COOKIE), request.headers.get("authorization"))
+        ):
+            return JSONResponse({"detail": "login required"}, status_code=401)
+        return await call_next(request)
+
+    @app.get("/api/auth")
+    def auth_status(request: Request) -> dict[str, Any]:
+        return {
+            "required": auth.required,
+            "authenticated": auth.authorized(request.cookies.get(COOKIE), request.headers.get("authorization")),
+        }
+
+    @app.post("/api/login")
+    async def login(request: Request) -> JSONResponse:
+        if not auth.required:
+            return JSONResponse({"ok": True, "message": "no password is set"})
+        try:
+            body = await request.json()
+            pw = body.get("password") if isinstance(body, dict) else None
+        except ValueError:
+            pw = None
+        if not isinstance(pw, str):
+            return JSONResponse({"ok": False, "message": "password missing"}, status_code=400)
+        client = request.client.host if request.client else "?"
+        try:
+            token = auth.login(client, pw, time.time())
+        except RateLimited as exc:
+            return JSONResponse({"ok": False, "message": "too many attempts, wait a minute"}, status_code=429,
+                                headers={"Retry-After": str(max(1, round(exc.retry_after)))})
+        if token is None:
+            return JSONResponse({"ok": False, "message": "wrong password"}, status_code=401)
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(COOKIE, token, httponly=True, samesite="strict", path="/")
+        return resp
+
+    @app.post("/api/logout")
+    def logout(request: Request) -> JSONResponse:
+        auth.logout(request.cookies.get(COOKIE))
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(COOKIE, path="/")
+        return resp
+
+    @app.post("/api/estop")
+    async def estop_rest() -> dict[str, Any]:  # async: runs on the control-loop thread
+        """Emergency stop without a session (login screen, scripts). Always accepted, also without the password."""
+        o = obsv()
+        o.controller.log("E-stop requested over HTTP", "warning")
+        return o.controller.emergency_stop()
 
     def when(t: float | None) -> float:
         return obsv().clock.now() if t is None else t
@@ -364,6 +430,9 @@ def create_app(observatory: Observatory | None = None, state_dir: Path | None = 
     @app.websocket("/ws")
     async def ws(socket: WebSocket, name: str = "client") -> None:
         await socket.accept()
+        if not auth.authorized(socket.cookies.get(COOKIE), socket.headers.get("authorization")):
+            await socket.close(code=4401, reason="login required")
+            return
         o = obsv()
         session = o.sessions.open(name, time.time())
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=8)

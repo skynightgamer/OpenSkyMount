@@ -28,3 +28,29 @@ describe("fixed-width readouts", () => {
     expect(fixedDMS(-89.5)).toHaveLength(fixedDMS(1).length);
   });
 });
+
+describe("display preferences", () => {
+  it("formats angles in both modes with fixed width", async () => {
+    const { angleFmt } = await import("./format");
+    const dms = angleFmt({ angles: "dms", timeZone: "UTC" });
+    const dec = angleFmt({ angles: "decimal", timeZone: "UTC" });
+    expect(dms.ra(279.23473479)).toBe("18h 36m 56.3s");
+    expect(dms.ra(359.99999)).toBe("00h 00m 00.0s");
+    expect(dec.ra(279.23473479)).toBe("279.2347°");
+    expect(dms.az(5.5)).toBe(`${F}${F}5° 30′ 00″`);
+    expect(dms.az(194.3336).length).toBe(dms.az(5).length);
+    expect(dec.dec(-5.25)).toBe(`${F}−5.2500°`);
+    expect(dms.alt(75.959)).toBe("+75° 57′ 32″");
+  });
+  it("round-trips datetime-local values through a time zone, including DST", async () => {
+    const { toZonedInput, fromZonedInput, formatTime } = await import("./format");
+    const t = Date.UTC(2026, 10, 1, 1, 0) / 1000; // 2026-11-01 01:00 UTC
+    expect(toZonedInput(t, "UTC")).toBe("2026-11-01T01:00");
+    expect(toZonedInput(t, "Europe/Berlin")).toBe("2026-11-01T02:00"); // CET, UTC+1
+    expect(toZonedInput(t, "America/New_York")).toBe("2026-10-31T21:00"); // still EDT, UTC-4
+    expect(fromZonedInput("2026-11-01T02:00", "Europe/Berlin")).toBe(t);
+    expect(fromZonedInput("2026-07-01T12:00", "Europe/Berlin")).toBe(Date.UTC(2026, 6, 1, 10, 0) / 1000);
+    expect(fromZonedInput("garbage", "UTC")).toBeNaN();
+    expect(formatTime(t, "Asia/Tokyo")).toMatch(/10:00/);
+  });
+});

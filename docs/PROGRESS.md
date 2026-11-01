@@ -38,3 +38,8 @@ _Last updated: 2026-10-31 (first autonomous session)._ Branch: `claude/gallant-t
   (the 80 mm refractor now matches the 0.45 m payload length). Illustrative only, not a CAD model. (3) The
   instrument-panel styling (D19) was replaced by a plain desktop-tool look (D25). Backend tests, 14 frontend unit
   tests and the browser E2E pass.
+- **Session 4, continued**: `main` created as the main branch. Implemented the former next tasks 4 and 5:
+  display options (sexagesimal or decimal angles, time zone per device) and an optional LAN password
+  (`OPENSKYMOUNT_PASSWORD`/`--password`, login screen, cookie sessions, login throttling, E-STOP without login).
+  Fixed a bug found while testing it: a failed catalog request was cached, which would have left the sky map
+  empty. 88 backend tests (+7), 16 frontend unit tests and both browser E2E scripts pass.

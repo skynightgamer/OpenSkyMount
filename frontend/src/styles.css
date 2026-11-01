@@ -166,8 +166,13 @@ input[type="number"], input[type="datetime-local"] { font-variant-numeric: tabul
 @media (min-width: 1280px) {
   .telemetry {
     grid-template-columns:
-      minmax(0, 12fr) minmax(0, 19fr) minmax(0, 27fr) minmax(0, 16fr) minmax(0, 9fr)
+      minmax(0, 12fr) minmax(0, 19fr) minmax(0, 21fr) minmax(0, 16fr) minmax(0, 9fr)
       minmax(0, 11fr) minmax(0, 21fr) minmax(0, 18fr) minmax(0, 17fr) minmax(0, 11fr);
+  }
+  .telemetry.angles-dms {
+    grid-template-columns:
+      minmax(0, 11fr) minmax(0, 27fr) minmax(0, 27fr) minmax(0, 13fr) minmax(0, 9fr)
+      minmax(0, 10fr) minmax(0, 20fr) minmax(0, 17fr) minmax(0, 16fr) minmax(0, 9fr);
   }
 }
 
@@ -251,3 +256,15 @@ fieldset label.check input { width: auto; min-height: 0; accent-color: var(--acc
 .align-points li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .align-points .mono { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .align-points button { min-height: 24px; padding: 0 7px; font-size: 12px; }
+
+/* ---- login (password-protected LAN mode) ---- */
+.login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+.login-box { width: min(340px, 100%); display: grid; gap: 10px; padding: 18px 20px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg-sunken); }
+.login-box h1 { margin: 0; font-size: 17px; font-weight: 600; }
+.login-box p { margin: 0; color: var(--muted); }
+.login-box label { display: grid; gap: 4px; }
+.login-box hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 6px 0 0; }
+.login-error { color: var(--danger) !important; }
+.login-note { font-size: 12px; }
+.hint { margin: 0; color: var(--muted); font-size: 12px; }
+.zone { color: var(--muted); font-weight: 400; font-size: 13px; }
