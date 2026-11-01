@@ -1,6 +1,6 @@
 # Continuation prompt for the next Claude Code session
 
-Paste this into a new Claude Code session on the repository (branch `claude/gallant-turing-py2w4q`):
+Paste this into a new Claude Code session on the repository (start from branch `main`):
 
 ---
 You are continuing development of **OpenSkyMount**, a local-first alt-az mount control app with a simulator
@@ -13,7 +13,7 @@ You are continuing development of **OpenSkyMount**, a local-first alt-az mount c
 3. Take the top open item in `docs/NEXT_TASKS.md`. Implement it in a well-scoped way with tests. Keep all existing
    tests green. Run the browser E2E (`scripts/test.sh --e2e`) if you touched the UI.
 4. Update `docs/PROGRESS.md`, `docs/NEXT_TASKS.md`, `docs/TEST_RESULTS.md` (and `docs/DECISIONS.md` for design
-   choices). Commit with clear messages and push to the same branch. Never merge to the default branch.
+   choices). Commit with clear messages and push to your working branch. Merge into `main` only when the user asks.
 5. Safety rules: keep solar GoTo blocked off-simulator, keep E-stop available to all clients, and never claim
    hardware behaviour is verified.
 Budget: prefer finishing one verified item over starting several.

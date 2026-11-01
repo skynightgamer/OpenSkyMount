@@ -29,4 +29,6 @@ behaviour is verified.
   E-stop must stay accepted from every client. Manual slews need the dead-man refresh.
 - Tests use deterministic `tests/conftest.py::Rig` (explicit sim time). Astronomy tests must use independent references.
 - Keep UI honest: features must work or be labelled experimental/simulated.
-- Update `docs/PROGRESS.md`, `docs/NEXT_TASKS.md`, `docs/TEST_RESULTS.md` when finishing work. Commit to the assigned branch; never merge to main.
+- Update `docs/PROGRESS.md`, `docs/NEXT_TASKS.md`, `docs/TEST_RESULTS.md` when finishing work. Commit to the assigned branch.
+- Git: `main` is the main branch and holds the current state. Feature branches start from `main`; merge into `main`
+  only when the user asks.
