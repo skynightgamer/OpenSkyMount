@@ -30,4 +30,11 @@ _Last updated: 2026-10-31 (first autonomous session)._ Branch: `claude/gallant-t
   points; Alignment panel); star catalog extended to magnitude 8 with Hipparcos-2 proper motions and parallaxes
   (lazy faint tier in the sky map); exposure planner (field rotation and fixed-tripod limits); observing planner
   ("Best tonight" list, `/api/tonight`). 91 backend tests, 10 frontend unit tests and the extended browser E2E pass.
-
+- **Session 4 (2026-11-01)**: user feedback round. (1) The bottom status bar no longer shifts: every cell is always
+  rendered, columns are content-independent grid tracks and values are padded to fixed width (`src/format.ts`);
+  measured 1 layout over 6 s of slewing (was 4). (2) The 3D mount model was rebuilt: two-section tripod with
+  spreader tray and controller box, lathe-turned azimuth base with a degree setting circle, tapered fork arms,
+  stepper motors, a belt-driven altitude axis with its own setting circle, cradles, and more detailed payloads
+  (the 80 mm refractor now matches the 0.45 m payload length). Illustrative only, not a CAD model. (3) The
+  instrument-panel styling (D19) was replaced by a plain desktop-tool look (D25). Backend tests, 14 frontend unit
+  tests and the browser E2E pass.

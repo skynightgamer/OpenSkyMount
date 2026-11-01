@@ -15,6 +15,13 @@ import SkyMap, { type Layers } from "./sky/SkyMap";
 import { useStore } from "./store";
 
 type Tab = "sky" | "mount" | "control";
+const LAYER_LABEL: Record<keyof Layers, string> = {
+  constellations: "Constellations",
+  labels: "Labels",
+  altaz: "Alt-az grid",
+  equatorial: "Equatorial grid",
+  dsos: "Messier",
+};
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("sky");
@@ -74,17 +81,17 @@ export default function App() {
           <div className="layers">
             {(Object.keys(layers) as (keyof Layers)[]).map((k) => (
               <label key={k}>
-                <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {k === "altaz" ? "alt-az grid" : k === "dsos" ? "Messier" : k}
+                <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {LAYER_LABEL[k]}
               </label>
             ))}
             <label>
-              <input type="checkbox" checked={follow} onChange={() => setFollow(!follow)} /> follow mount
+              <input type="checkbox" checked={follow} onChange={() => setFollow(!follow)} /> Follow mount
             </label>
           </div>
         </section>
         <section className="col mount-col">
           <MountView />
-          {caps?.simulated && <div className="sim-note">Simulated mount — behaviour of real hardware is not verified.</div>}
+          {caps?.simulated && <div className="sim-note">Simulated mount. Real hardware behaviour is not verified.</div>}
         </section>
         <section className="col control-col">
           <ControlAuthority />

@@ -10,7 +10,6 @@
 | NumPy | Numerics | BSD-3-Clause |
 | React, React-DOM | UI | MIT |
 | three.js | 3D view | MIT |
-| Barlow, Barlow Condensed, IBM Plex Mono (via @fontsource, bundled into the UI build) | Interface typefaces, served locally (no font CDN) | SIL Open Font License 1.1 |
 | Vite, TypeScript, Vitest | Build/test tooling (not shipped) | MIT / Apache-2.0 |
 | cedar-solve (fork of ESA tetra3) — *optional, not bundled* | Plate-solving proof of concept | Apache-2.0 (tetra3 derivative of MIT-licensed Tetra) |
 | Astropy — *optional, tests only* | Independent cross-check | BSD-3-Clause |

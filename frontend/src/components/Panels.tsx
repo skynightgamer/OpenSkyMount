@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { fixedAngle, fixedDMS, fixedNum } from "../format";
 import { formatDMS, formatRA } from "../sky/projection";
 import { ExposurePlanner, TonightList } from "./Planner";
 import {
@@ -15,8 +16,6 @@ import {
 
 const EMPTY: never[] = [];
 const fmt = (v: number | null | undefined, d = 2, unit = "°") => (v == null || Number.isNaN(v) ? "—" : `${v.toFixed(d)}${unit}`);
-const arcsec = (deg: number | null | undefined) =>
-  deg == null ? "—" : deg < 1 / 60 ? `${(deg * 3600).toFixed(1)}″` : deg < 1 ? `${(deg * 60).toFixed(2)}′` : `${deg.toFixed(2)}°`;
 const timeStr = (unix: number | null | undefined) =>
   unix == null ? "—" : new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -228,7 +227,7 @@ export function ControlAuthority() {
   const ctl = useStore((s) => isController(s));
   const control = useStore((s) => s.control);
   const conn = useStore((s) => s.connection);
-  if (conn !== "open") return <div className="authority warn">Disconnected — reconnecting…</div>;
+  if (conn !== "open") return <div className="authority warn">Disconnected, reconnecting…</div>;
   return (
     <div className={`authority ${ctl ? "ok" : ""}`}>
       {ctl ? (
@@ -238,7 +237,7 @@ export function ControlAuthority() {
         </>
       ) : control?.controller ? (
         <>
-          <span>Observing · {control.controller_name} has control</span>
+          <span>Viewing only. {control.controller_name} has control</span>
           <button
             onClick={() => {
               if (confirm(`Take control from ${control.controller_name}?`)) requestControl(true);
@@ -249,7 +248,7 @@ export function ControlAuthority() {
         </>
       ) : (
         <>
-          <span>Observing · nobody has control</span>
+          <span>Viewing only. Nobody has control</span>
           <button className="primary" onClick={() => requestControl(false)}>
             Take control
           </button>
@@ -288,7 +287,7 @@ export function MotionPanel() {
       </div>
       <div className="row">
         <button disabled={!ctl || !latched} className={latched ? "warnbtn" : ""} onClick={() => command("reset")}>
-          Reset {faults.length ? `(${faults.join(", ")})` : ""}
+          Reset{faults.length ? ` (${faults.join(", ")})` : ""}
         </button>
         <button disabled={!ctl} onClick={() => command("home")}>
           Home
@@ -343,14 +342,14 @@ function ManualPad({ enabled, speed }: { enabled: boolean; speed: number }) {
   );
   return (
     <div className="manual" aria-label="Manual slew (press and hold)">
-      {btn("ALT +", 1, 0, "up")}
-      {btn("AZ −", 0, -1, "left")}
+      {btn("Alt +", 1, 0, "up")}
+      {btn("Az −", 0, -1, "left")}
       <div className="pad-center">
         <span>{speed}°/s</span>
-        <small>press &amp; hold</small>
+        <small>hold to move</small>
       </div>
-      {btn("AZ +", 0, 1, "right")}
-      {btn("ALT −", -1, 0, "down")}
+      {btn("Az +", 0, 1, "right")}
+      {btn("Alt −", -1, 0, "down")}
     </div>
   );
 }
@@ -440,7 +439,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
       <div className="modal-body">
         <header>
           <h2>Settings</h2>
-          <button onClick={onClose} aria-label="Close">✕</button>
+          <button onClick={onClose} aria-label="Close">Close</button>
         </header>
         {!ctl && <p className="warn-text">Take control to change settings.</p>}
         <fieldset>
@@ -459,7 +458,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
           <select value={payload} onChange={(e) => setPayload(e.target.value)}>
             {Object.values(cfg.payloads).map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} — {p.mass_kg} kg, max alt {p.max_altitude}°
+                {p.name}, {p.mass_kg} kg, max alt {p.max_altitude}°
               </option>
             ))}
           </select>
@@ -484,7 +483,7 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
             {simNum("command_latency_s", "Command latency (s)", 0.01)}
             {simNum("backlash_alt", "Backlash alt (°)", 0.01)}
             {simNum("backlash_az", "Backlash az (°)", 0.01)}
-            {simNum("az_zero_offset", "Azimuth zero error (°)", 0.05, "True north misalignment — uncorrected until Sync / plate solve")}
+            {simNum("az_zero_offset", "Azimuth zero error (°)", 0.05, "True north misalignment, uncorrected until Sync or plate solve")}
             {simNum("alt_zero_offset", "Altitude zero error (°)", 0.05)}
             {simNum("tilt_magnitude", "Base tilt (°)", 0.05)}
             {simNum("tilt_direction", "Tilt direction (az °)", 1)}
@@ -527,64 +526,51 @@ const MODE_LABEL: Record<string, string> = {
   homing: "Homing",
   emergency_stop: "E-STOP",
   fault: "Fault",
-  disconnected: "Mount disconnected",
+  disconnected: "Disconnected",
 };
 
+function Cell({ label, value, title, className = "" }: { label: string; value: string; title?: string; className?: string }) {
+  return (
+    <div className={`tel ${className}`} title={title}>
+      <label>{label}</label>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+// Every cell is always rendered and every value has a fixed character width (see format.ts and the
+// .telemetry grid in styles.css), so the bar layout never changes while numbers update.
 export function Telemetry() {
   const m = useStore((s) => s.mount);
   const sim = useStore((s) => s.config?.capabilities.simulated);
-  if (!m) return <footer className="telemetry">Waiting for telemetry…</footer>;
+  if (!m) return <footer className="telemetry waiting">Waiting for telemetry…</footer>;
+  const p = m.position;
+  const flags = [...m.driver.faults, ...m.flags];
+  const rate = (r: number) => `${fixedNum(r * 3600, 5, 0, true)}″/s`;
   return (
     <footer className="telemetry">
       <div className={`mode mode-${m.mode}`}>{MODE_LABEL[m.mode] ?? m.mode}</div>
-      <div className="tel">
-        <label>Mount Alt/Az</label>
-        <span>
-          {fmt(m.position.alt, 3)} / {fmt(m.position.az, 3)}
-        </span>
-      </div>
-      <div className="tel">
-        <label>RA / Dec</label>
-        <span>{m.position.ra != null ? `${formatRA(m.position.ra)} ${formatDMS(m.position.dec!)}` : "—"}</span>
-      </div>
-      <div className="tel">
+      <Cell label="Mount alt / az" value={`${fixedNum(p.alt, 2, 3, true)}° / ${fixedNum(p.az, 3, 3)}°`} />
+      <Cell label="RA / Dec" className="radec" value={p.ra != null ? `${formatRA(p.ra)}  ${fixedDMS(p.dec)}` : "—"} />
+      <div className="tel target-cell" title={m.target?.name}>
         <label>Target</label>
-        <span>{m.target ? `${m.target.name} · ${fmt(m.target.alt, 3)} / ${fmt(m.target.az, 3)}` : "—"}</span>
+        <span>{m.target ? m.target.name : "none"}</span>
       </div>
-      <div className="tel">
-        <label>Error (mount)</label>
-        <span>{arcsec(m.tracking_error)}</span>
-      </div>
-      {sim && (
-        <div className="tel" title="Simulation ground truth: where the payload really points">
-          <label>Error (true, sim)</label>
-          <span>{arcsec(m.true_pointing_error)}</span>
-        </div>
+      <Cell label="Error" value={fixedAngle(m.tracking_error)} title="Mount-reported pointing error" />
+      {sim ? (
+        <Cell label="True error (sim)" value={fixedAngle(m.true_pointing_error)} title="Simulation ground truth: where the payload really points" />
+      ) : (
+        <Cell label="True error" value="n/a" title="Only known in the simulator" />
       )}
-      <div className="tel">
-        <label>Axis rates</label>
-        <span>
-          {(m.position.alt_rate * 3600).toFixed(0)}″/s · {(m.position.az_rate * 3600).toFixed(0)}″/s
+      <Cell label="Rate alt / az" value={`${rate(p.alt_rate)} ${rate(p.az_rate)}`} />
+      <Cell label="Axes alt / az" value={`${fixedNum(p.alt_axis, 3, 2, true)}° ${fixedNum(p.az_axis, 3, 2, true)}°`} title="Raw axis angles (azimuth is multi-turn)" />
+      <Cell label="Motor" value={`${m.driver.connected ? "link ok" : "no link"}, ${m.driver.homed ? "homed" : "not homed"}`} />
+      <div className="tel flags">
+        <label>Flags</label>
+        <span className={flags.length ? "" : "none"} title={flags.join(", ")}>
+          {flags.length ? flags.join(", ") : "none"}
         </span>
       </div>
-      <div className="tel">
-        <label>Axes (alt / az°)</label>
-        <span>
-          {m.position.alt_axis.toFixed(2)} / {m.position.az_axis.toFixed(2)}
-        </span>
-      </div>
-      <div className="tel">
-        <label>Motor</label>
-        <span>
-          {m.driver.connected ? "link ok" : "no link"} · {m.driver.homed ? "homed" : "not homed"}
-        </span>
-      </div>
-      {(m.flags.length > 0 || m.driver.faults.length > 0) && (
-        <div className="tel flags">
-          <label>Flags</label>
-          <span>{[...m.driver.faults, ...m.flags].join(", ")}</span>
-        </div>
-      )}
     </footer>
   );
 }

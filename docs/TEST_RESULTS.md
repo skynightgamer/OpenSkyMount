@@ -9,7 +9,7 @@ Last full run: 2026-11-01, Linux cloud container, Python 3.13.18, Node 22.23. Ve
 | Types (mypy) | `cd backend && mypy openskymount` | pass (22 files) |
 | Backend tests | `cd backend && pytest -q` | **91 passed** in ~52 s with optional extras installed (astropy and solver tests skip without them) |
 | Frontend types | `cd frontend && npx tsc -p tsconfig.json` | pass |
-| Frontend unit | `cd frontend && npx vitest run` | **10 passed** (projection math, Earth-rotation extrapolation, formatting, exposure planner) |
+| Frontend unit | `cd frontend && npx vitest run` | **14 passed** (projection math, Earth-rotation extrapolation, formatting, fixed-width readouts, exposure planner) |
 | Browser E2E | `node frontend/e2e/smoke.cjs` (headless Chromium, desktop + phone viewport) | **pass** (tonight list, search, exposure planner, GoTo, two-client sync, Sync → alignment, E-STOP) |
 
 ## Coverage by area
