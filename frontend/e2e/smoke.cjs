@@ -40,13 +40,21 @@ async function waitText(page, selector, re, timeout = 30000) {
   await a.getByRole("button", { name: "×10" }).click();
   await waitText(a, ".clock-read", /simulated ×10/);
 
+  // Tonight's planner is shown while the search box is empty.
+  await a.waitForSelector(".tonight-list li", { timeout: 20000 });
+  console.log("Tonight top:", (await a.locator(".tonight-list li").first().innerText()).replace(/\s+/g, " "));
+
   // Search, select and GoTo Jupiter.
   await a.fill('input[type="search"]', "Jupiter");
   await a.locator(".hits button").first().click();
   await waitText(a, ".target h2", /Jupiter/);
   await waitText(a, ".target", /above horizon/);
-  const rows = await a.locator(".target dl").innerText();
+  const rows = await a.locator(".target > dl").innerText();
   console.log("Jupiter info:\n" + rows);
+  // Exposure planner for the selected target.
+  await a.locator(".exposure summary").click();
+  await waitText(a, ".exp-out", /Max on this mount \(tracking\)\s*\d/);
+  console.log("Exposure:", (await a.locator(".exp-out").innerText()).replace(/\s+/g, " "));
   await a.getByRole("button", { name: "GoTo & track" }).click();
   await waitText(a, ".telemetry .mode", /Slewing|Tracking/);
 
@@ -56,6 +64,11 @@ async function waitText(page, selector, re, timeout = 30000) {
   await waitText(b, ".telemetry .mode", /Tracking/, 60000);
   await waitText(b, ".telemetry", /Jupiter/);
   console.log("B telemetry:", (await b.locator(".telemetry").innerText()).replace(/\s+/g, " "));
+
+  // Alignment: sync on the tracked target adds a model point visible to all clients.
+  await a.getByRole("button", { name: "Sync" }).click();
+  await waitText(a, ".alignment", /1 point/);
+  await waitText(b, ".alignment", /1 point/);
 
   await a.waitForTimeout(1500);
   await a.screenshot({ path: `${shots}/desktop.png` });

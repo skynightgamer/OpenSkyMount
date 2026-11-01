@@ -35,7 +35,7 @@ class CameraModel:
 
 
 def render_star_field(catalog: Catalog, ra_deg: float, dec_deg: float, roll_deg: float = 0.0,
-                      camera: CameraModel | None = None, seed: int = 1) -> np.ndarray:
+                      camera: CameraModel | None = None, seed: int = 1, epoch_year: float = 2026.0) -> np.ndarray:
     """Synthetic 8-bit sky image centred on (ra, dec), north up rotated by ``roll`` (gnomonic, sky parity)."""
     cam = camera or CameraModel()
     rng = np.random.default_rng(seed)
@@ -47,7 +47,8 @@ def render_star_field(catalog: Catalog, ra_deg: float, dec_deg: float, roll_deg:
     for s in catalog.stars:
         if s["mag"] > cam.mag_limit:
             break
-        ra, dec = math.radians(s["ra"]), math.radians(s["dec"])
+        ra_e, dec_e = catalog.position_at(s, epoch_year)
+        ra, dec = math.radians(ra_e), math.radians(dec_e)
         cosc = math.sin(dec0) * math.sin(dec) + math.cos(dec0) * math.cos(dec) * math.cos(ra - ra0)
         if cosc < 0.5:
             continue
@@ -127,7 +128,7 @@ def pointing_correction(engine: Any, requested: tuple[float, float], measured_ra
 
 
 def simulated_alignment(controller: Any, apply: bool = True, camera: CameraModel | None = None) -> dict[str, Any]:
-    """Simulate a camera exposure at the mount's *true* pointing, solve it, and correct the model.
+    """Simulate a camera exposure at the mount's *true* pointing, solve it, and add an alignment point.
 
     Only possible with the simulator (it knows the true pointing). With real hardware
     the image would come from the payload camera instead.
@@ -150,7 +151,10 @@ def simulated_alignment(controller: Any, apply: bool = True, camera: CameraModel
     out["solve_vs_truth_arcsec"] = 3600 * math.degrees(math.acos(min(1.0,
         math.sin(math.radians(sol["dec"])) * math.sin(math.radians(rd["dec_j2000"]))
         + math.cos(math.radians(sol["dec"])) * math.cos(math.radians(rd["dec_j2000"])) * math.cos(math.radians(sol["ra"] - rd["ra_j2000"])))))
-    if apply and snap["target"]:
-        controller.apply_correction(corr["d_alt"], corr["d_az"])
+    if apply:
+        # The solution says where the payload really points: record it as an alignment point.
+        label = f"plate solve near {snap['target']['name']}" if snap["target"] else "plate solve"
+        res = controller.add_alignment_point(corr["measured_alt"], corr["measured_az"], label, "plate_solve")
         out["applied"] = True
+        out["model"] = res["model"]
     return out

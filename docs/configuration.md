@@ -29,11 +29,13 @@ Environment variables: `OPENSKYMOUNT_HOST`, `OPENSKYMOUNT_PORT`, `OPENSKYMOUNT_S
 (`sim` or `tcp://host:port` or `serial:///dev/ttyUSB0@115200`).
 
 ## API summary
-- `GET /api/health`, `/api/config`, `/api/status`, `/api/catalog`, `/api/sky?t=`, `/api/search?q=`,
-  `/api/object?id=&t=`
+- `GET /api/health`, `/api/config`, `/api/status`, `/api/catalog?tier=bright|faint` (≤ 6.5 / 6.5–8 mag,
+  positions propagated to the current year), `/api/sky?t=`, `/api/search?q=`, `/api/object?id=&t=`,
+  `/api/tonight?t=&min_alt=30&kind=all|planet|dso|star&limit=40`
 - WebSocket `/ws?name=`. Client messages: `ping`, `request_control {force}`, `release_control`,
   `command {seq, cmd, args}`. Commands: `goto {target, track}`, `track_start`, `track_stop`, `stop`, `estop`,
-  `reset`, `manual {alt_rate, az_rate}`, `home`, `sync {target}`, `clear_sync`, `apply_correction {d_alt, d_az}`,
+  `reset`, `manual {alt_rate, az_rate}`, `home`, `sync {target}` (adds an alignment point), `align_remove {index}`,
+  `clear_sync` (clears the pointing model), `apply_correction {d_alt, d_az}`,
   `set_clock {live|time|rate|paused}`, `set_config {...}`, `inject_fault {fault, active}`,
   `align_simulated {apply}`.
 - Target ids: `planet:jupiter`, `moon`, `sun`, `hip:32349`, `dso:M31`, `radec:<ra°>,<dec°>` (J2000),

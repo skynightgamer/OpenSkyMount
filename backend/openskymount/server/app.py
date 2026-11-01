@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
+from ..astro.catalog import BRIGHT_LIMIT
 from ..astro.engine import PLANETS, AstronomyEngine, TargetError
 from ..clock import SimClock
 from ..config import PAYLOADS, AppConfig
@@ -68,7 +69,6 @@ class Observatory:
         self.controller = MountController(self.engine, self.driver, self.config, now)
         self.sessions = SessionManager(self.config.control.control_lease_s)
         self._task: asyncio.Task[None] | None = None
-        self._catalog_json: bytes | None = None
         self.started = time.time()
 
     # ------------------------------------------------------------ main loop
@@ -156,10 +156,20 @@ class Observatory:
             self._solver_cache = solver_available()
         return self._solver_cache
 
-    def catalog_json(self) -> bytes:
-        if self._catalog_json is None:
-            self._catalog_json = json.dumps(self.engine.catalog.client_payload(), separators=(",", ":")).encode()
-        return self._catalog_json
+    def catalog_json(self, tier: str = "bright") -> bytes:
+        """Catalog for the browser, star positions propagated to the current year (cached per year)."""
+        year = round(2000.0 + (self.clock.now() - 946728000.0) / (365.25 * 86400.0), 1)
+        key = (tier, year)
+        cache = self.__dict__.setdefault("_catalog_cache", {})
+        if key not in cache:
+            cat = self.engine.catalog
+            if tier == "faint":
+                payload: dict[str, Any] = {"epoch": year, "stars": cat.client_stars(BRIGHT_LIMIT, 8.0, year)}
+            else:
+                payload = cat.client_payload(year)
+            cache.clear()
+            cache[key] = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode()
+        return cache[key]
 
     # -------------------------------------------------------------- commands
     def apply_config(self, patch: dict[str, Any]) -> None:
@@ -235,6 +245,8 @@ class Observatory:
             return c.home()
         if cmd == "sync":
             return c.sync(str(args.get("target", "")))
+        if cmd == "align_remove":
+            return c.remove_alignment_point(int(args["index"]))
         if cmd == "clear_sync":
             return c.clear_sync()
         if cmd == "apply_correction":
@@ -259,7 +271,7 @@ class Observatory:
             return {
                 "ok": True,
                 "message": f"Solved ({sol['matches']} stars): pointing error was {corr.get('error_deg', 0) * 60:.1f}′"
-                + ("; correction applied" if res.get("applied") else ""),
+                + ("; alignment point added" if res.get("applied") else ""),
                 "result": res,
             }
         if cmd == "inject_fault":
@@ -302,8 +314,8 @@ def create_app(observatory: Observatory | None = None, state_dir: Path | None = 
         return {"ok": True, "version": __version__, "uptime": time.time() - obsv().started}
 
     @app.get("/api/catalog")
-    def catalog() -> Response:
-        return Response(obsv().catalog_json(), media_type="application/json",
+    def catalog(tier: str = Query("bright", pattern="^(bright|faint)$")) -> Response:
+        return Response(obsv().catalog_json(tier), media_type="application/json",
                         headers={"Cache-Control": "public, max-age=3600"})
 
     @app.get("/api/sky")
@@ -322,6 +334,24 @@ def create_app(observatory: Observatory | None = None, state_dir: Path | None = 
         except TargetError as exc:
             raise HTTPException(404, str(exc)) from exc
         return JSONResponse(_finite(o.engine.info(target, when(t))))
+
+    @app.get("/api/tonight")
+    def tonight(
+        t: float | None = None,
+        min_alt: float = Query(30.0, ge=0.0, le=80.0),
+        kind: str = Query("all", pattern="^(all|planet|dso|star)$"),
+        limit: int = Query(40, ge=1, le=200),
+    ) -> JSONResponse:
+        from ..astro.tonight import best_targets
+
+        o = obsv()
+        unix = when(t)
+        key = (round(unix / 600), min_alt, kind, limit, o.config.observer.latitude, o.config.observer.longitude)
+        cache = o.__dict__.setdefault("_tonight_cache", {})
+        if key not in cache:
+            cache.clear()
+            cache[key] = _finite(best_targets(o.engine, unix, min_alt=min_alt, kind=kind, limit=limit))
+        return JSONResponse(cache[key])
 
     @app.get("/api/status")
     def status() -> JSONResponse:

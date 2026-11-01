@@ -70,6 +70,12 @@ class Target:
     magnitude: float | None = None
     constellation: str | None = None
     type_label: str = ""
+    # Astrometry for catalog stars: proper motion (mu_alpha*, mu_delta in mas/yr), parallax (mas)
+    # and the epoch (JD, TT) of ra_deg/dec_deg. Zero / J2000 for other fixed targets.
+    pm_ra: float = 0.0
+    pm_dec: float = 0.0
+    parallax: float = 0.0
+    epoch_jd: float = 2451545.0
 
     @property
     def solar_system(self) -> bool:
@@ -148,6 +154,10 @@ class AstronomyEngine:
                 magnitude=star["mag"],
                 constellation=star["con"] or None,
                 type_label="Star",
+                pm_ra=star["pmra"],
+                pm_dec=star["pmdec"],
+                parallax=max(0.0, star["plx"]),
+                epoch_jd=self.catalog.star_epoch_jd,
             )
         if low.startswith("dso:"):
             dso = self.catalog.dso_by_id(tid[4:].upper())
@@ -187,7 +197,14 @@ class AstronomyEngine:
         if target.ra_deg is not None and target.dec_deg is not None:
             body = self._target_cache.get(target.id)
             if body is None:
-                body = Star(ra_hours=target.ra_deg / 15.0, dec_degrees=target.dec_deg)
+                body = Star(
+                    ra_hours=target.ra_deg / 15.0,
+                    dec_degrees=target.dec_deg,
+                    ra_mas_per_year=target.pm_ra,
+                    dec_mas_per_year=target.pm_dec,
+                    parallax_mas=target.parallax,
+                    epoch=target.epoch_jd,
+                )
                 self._target_cache[target.id] = body
             return body
         raise TargetError(f"target {target.id} has no celestial position")
@@ -270,7 +287,12 @@ class AstronomyEngine:
 
     # ------------------------------------------------------------ information
     def field_rotation_rate(self, alt: float, az: float) -> float:
-        """Field rotation rate (deg/s) seen by an alt-az mount at (alt, az)."""
+        """Field rotation rate (deg/s) seen by an alt-az mount at (alt, az).
+
+        omega_earth * cos(lat) * cos(az) / cos(alt). Sign convention: equal to minus the rate of
+        change of the parallactic angle (verified in tests); negative east of the meridian.
+        Exposure limits depend only on the magnitude.
+        """
         ca = math.cos(math.radians(alt))
         if abs(ca) < 1e-6:
             return float("inf")

@@ -13,11 +13,12 @@ mount**, so behaviour on real hardware is *not verified*. See [docs/PROGRESS.md]
 
 ## What works today (verified by automated tests)
 
-- **Sky map**: stars to magnitude 6 (5044 Hipparcos stars), constellation lines, Messier objects, Sun, Moon and
+- **Sky map**: 41,411 stars to magnitude 8 (the faint ones load when you zoom in), constellation lines, Messier objects, Sun, Moon and
   planets, alt-az and equatorial grids, horizon, zoom and pan by mouse or touch, search (e.g. "Jupiter", "Vega",
   "alpha Lyr", "M31"), and object details: RA/Dec, Alt/Az, rise, transit and set times, rates, and field rotation.
 - **Accurate astronomy**: Skyfield and the JPL DE421 ephemeris, fully offline. Results are checked against worked
-  examples from Meeus' *Astronomical Algorithms* and cross-checked against Astropy (stars agree within 5″).
+  examples from Meeus' *Astronomical Algorithms* and cross-checked against Astropy (stars agree within 5″). Star
+  positions use Hipparcos-2 astrometry with proper motion and parallax.
 - **Virtual mount**: 3D model with five payload shapes. The physics model covers acceleration and speed limits,
   backlash, command latency, encoder noise, base tilt and zero-point errors, travel and cable-wrap limits, and
   fault injection.
@@ -27,13 +28,19 @@ mount**, so behaviour on real hardware is *not verified*. See [docs/PROGRESS.md]
 - **Safety policy**: the Sun is blocked by default, with a 15° solar exclusion zone. Software E-stop is available
   from every client and takes precedence over everything else. Manual slewing has a dead-man timer, and firmware
   soft limits are enforced.
+- **Alignment model**: Sync on stars (or plate-solve) to build a pointing model. One star corrects the axis zero
+  offsets; three or more also correct a tilted base. In simulation, three stars bring a 0.6°-misaligned, tilted
+  mount below 72″ across the sky.
+- **Observing planner**: tonight's darkness window and the best targets in it, ranked for small optics.
+- **Exposure planner**: longest exposure before field rotation (on this mount) or star trailing (fixed tripod) blurs
+  the image, for presets from a smartphone to a small telescope.
 - **Red-light mode** for use at the telescope (whole interface rendered in pure red to preserve dark adaptation).
 - **Multi-device**: WebSocket state sync. One client holds control authority at a time; the others observe.
   Commands carry sequence numbers, so stale ones are rejected.
 - **Hardware path**: an OSM/1 line protocol, a *fake firmware* TCP endpoint and a protocol driver. Integration
   tests run the controller over real TCP.
 - **Experimental plate solving**: synthetic camera frames are solved with tetra3/cedar-solve, and the measured
-  pointing error is fed back into the pointing model.
+  position is added to the alignment model.
 
 ## Quick start
 

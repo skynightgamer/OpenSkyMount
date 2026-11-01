@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDMS, formatRA } from "../sky/projection";
+import { ExposurePlanner, TonightList } from "./Planner";
 import {
   command,
   getState,
@@ -48,7 +49,6 @@ export function SearchPanel() {
       ctl.abort();
     };
   }, [q]);
-  const quick = ["Jupiter", "Saturn", "Moon", "Vega", "Sirius", "M31", "M42", "Polaris"];
   return (
     <section className="panel search">
       <input
@@ -85,16 +85,7 @@ export function SearchPanel() {
           ))}
         </ul>
       )}
-      {!q && (
-        <div className="quick">
-          <span>Try</span>
-          {quick.map((n) => (
-            <button key={n} onClick={() => setQ(n)}>
-              {n}
-            </button>
-          ))}
-        </div>
-      )}
+      {!q && <TonightList />}
     </section>
   );
 }
@@ -210,6 +201,7 @@ export function TargetPanel() {
         </ul>
       )}
       <GotoButtons id={info.id} disabled={!info.above_horizon || info.kind === "sun"} />
+      {info.kind !== "altaz" && <ExposurePlanner rate={info.above_horizon ? info.field_rotation_rate : null} dec={info.dec_date} />}
     </section>
   );
 }
@@ -224,7 +216,7 @@ function GotoButtons({ id, disabled }: { id: string; disabled: boolean }) {
       <button disabled={!ctl || disabled} onClick={() => command("goto", { target: id, track: false })}>
         GoTo only
       </button>
-      <button disabled={!ctl} onClick={() => command("sync", { target: id }).then((a) => a.ok && toast("Synced: pointing model updated"))} title="Declare that the mount currently points at this object (alignment)">
+      <button disabled={!ctl} onClick={() => command("sync", { target: id }).then((a) => a.ok && toast(String(a.message)))} title="The payload is centred on this object: add it as an alignment point">
         Sync
       </button>
     </div>
@@ -302,7 +294,6 @@ export function MotionPanel() {
           Home
         </button>
       </div>
-      <AlignButton enabled={ctl && !latched} />
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} />
       <div className="speed" role="radiogroup" aria-label="Manual speed">
         <span>Rate</span>
@@ -313,29 +304,6 @@ export function MotionPanel() {
         ))}
       </div>
     </section>
-  );
-}
-
-function AlignButton({ enabled }: { enabled: boolean }) {
-  const available = useStore((s) => !!s.config?.plate_solver && !!s.config?.capabilities.simulated);
-  const hasTarget = useStore((s) => !!s.mount?.target);
-  const [busy, setBusy] = useState(false);
-  if (!available) return null;
-  return (
-    <div className="row">
-      <button
-        disabled={!enabled || !hasTarget || busy}
-        title="Experimental: render a synthetic camera frame at the simulated true pointing, plate-solve it and correct the pointing model"
-        onClick={async () => {
-          setBusy(true);
-          const a = await command("align_simulated", { apply: true });
-          setBusy(false);
-          if (a.ok) toast(String(a.message));
-        }}
-      >
-        {busy ? "Solving…" : "Align: plate solve (simulated camera, experimental)"}
-      </button>
-    </div>
   );
 }
 

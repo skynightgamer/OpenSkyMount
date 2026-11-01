@@ -78,10 +78,6 @@ input[type="number"], input[type="datetime-local"] { font-family: var(--mono); f
 .hits button { width: 100%; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 12px; min-height: 0; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; background: transparent; box-shadow: none; text-transform: none; letter-spacing: 0; font: 15px var(--body); }
 .hits button:hover { background: var(--ink-2); }
 .hits small { color: var(--dim); font: 12px var(--mono); }
-.quick { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 8px; align-items: baseline; }
-.quick span { font: 600 11px var(--label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
-.quick button { background: none; border: 0; box-shadow: none; padding: 0; min-height: 22px; color: var(--amber); font: 14px var(--body); text-transform: none; letter-spacing: 0; }
-.quick button:hover:not(:disabled) { background: none; text-decoration: underline; }
 
 /* ---- sky + mount views ---- */
 .sky-wrap { position: relative; flex: 1; min-height: 260px; overflow: hidden; touch-action: none; }
@@ -203,3 +199,43 @@ fieldset label.check input { width: auto; min-height: 0; accent-color: var(--amb
   .tel { padding: 6px 10px; }
   fieldset label { grid-template-columns: 1fr 140px; }
 }
+
+/* ---- tonight planner (search panel, empty query) ---- */
+.tonight { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tonight-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tonight-head .label { margin: 0; }
+.tonight-window { font: 12px var(--mono); color: var(--dim); }
+.tonight-filters { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.tonight-filters button { min-height: 26px; padding: 0 8px; font-size: 12px; }
+.tonight-filters label { margin-left: auto; display: flex; align-items: center; gap: 6px; font: 500 12px var(--label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.tonight-filters select { width: auto; min-height: 26px; padding: 0 6px; font: 12px var(--mono); }
+.tonight-list { list-style: none; margin: 0; padding: 0; max-height: 34vh; overflow-y: auto; border-top: 1px solid #1f1c19; }
+.tonight-list button {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px; row-gap: 1px;
+  text-align: left; padding: 6px 2px; min-height: 0; border: 0; border-bottom: 1px solid #1f1c19; border-radius: 0;
+  background: transparent; box-shadow: none; text-transform: none; letter-spacing: 0;
+}
+.tonight-list button:hover:not(:disabled) { background: var(--ink-1); }
+.tn-name { font: 15px var(--body); color: var(--text); grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tn-meta { font: 12px var(--body); color: var(--dim); grid-column: 1; }
+.tn-when { font: 12px var(--mono); color: var(--amber); grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; }
+.tonight-more { align-self: flex-start; min-height: 26px; padding: 0; background: none; border: 0; box-shadow: none; color: var(--amber); font-size: 12px; }
+.tonight-more:hover:not(:disabled) { background: none; text-decoration: underline; }
+.tonight-empty { margin: 0; color: var(--dim); font-size: 13px; }
+
+/* ---- exposure planner (target panel) ---- */
+.exposure { margin-top: 12px; border-top: 1px solid var(--rule); padding-top: 10px; }
+.exposure summary { cursor: pointer; font: 600 11px var(--label); letter-spacing: 0.16em; text-transform: uppercase; color: var(--amber); list-style-position: inside; }
+.exposure[open] summary { margin-bottom: 8px; }
+.exp-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 8px 0; }
+.exp-inputs label { display: flex; flex-direction: column; gap: 3px; font: 500 11px var(--label); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.exp-out .exp-key { color: var(--amber); font-weight: 500; }
+.exp-note { margin: 8px 0 0; font-size: 12px; line-height: 1.45; color: var(--dim); max-width: 60ch; }
+
+/* ---- alignment ---- */
+.align-help { margin: 0 0 8px; font-size: 13px; color: #cfc7ba; line-height: 1.45; }
+.align-points { list-style: none; margin: 8px 0 0; padding: 0; }
+.align-points li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid #1f1c19; font-size: 13px; }
+.align-points li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.align-points .mono { font: 12px var(--mono); color: var(--dim); }
+.align-points button { min-height: 26px; padding: 0 8px; font-size: 11px; }

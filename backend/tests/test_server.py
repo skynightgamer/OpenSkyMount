@@ -50,7 +50,7 @@ class Cmd:
 def test_rest_endpoints(client: TestClient) -> None:
     assert client.get("/api/health").json()["ok"]
     cat = client.get("/api/catalog").json()
-    assert len(cat["stars"]) > 4000 and len(cat["constellations"]) == 89
+    assert 8000 < len(cat["stars"]) < 10000 and len(cat["constellations"]) == 89
     sky = client.get("/api/sky", params={"t": T0}).json()
     assert len(sky["matrix"]) == 3 and {b["name"] for b in sky["bodies"]} >= {"Sun", "Moon", "Jupiter"}
     hits = client.get("/api/search", params={"q": "jup"}).json()
@@ -61,6 +61,11 @@ def test_rest_endpoints(client: TestClient) -> None:
     assert client.get("/api/search", params={"q": ""}).status_code == 422
     cfg = client.get("/api/config").json()
     assert "smartphone" in cfg["payloads"] and cfg["capabilities"]["simulated"]
+    tn = client.get("/api/tonight", params={"t": T0 - 13 * 3600, "kind": "planet"}).json()
+    assert tn["window"]["hours"] > 8 and any(t["id"] == "planet:jupiter" for t in tn["targets"])
+    assert client.get("/api/tonight", params={"kind": "comet"}).status_code == 422
+    faint = client.get("/api/catalog", params={"tier": "faint"}).json()
+    assert len(faint["stars"]) > 30000 and min(s[3] for s in faint["stars"]) > 6.5
     st = client.get("/api/status").json()
     assert st["mount"]["mode"] == "idle"
 

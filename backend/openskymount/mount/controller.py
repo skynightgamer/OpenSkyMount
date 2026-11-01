@@ -20,6 +20,7 @@ from ..astro.engine import AstronomyEngine, Target, TargetError
 from ..config import AppConfig
 from .driver import DriverStatus, MountDriver
 from .geometry import field_rotation_rate, nearest_unwrapped, separation, wrap180
+from .pointing import AlignmentPoint, PointingModel
 
 CONTROL_DT = 0.1  # s of simulation time between setpoints
 STEADY_CONTROL_DT = 1.0  # while tracking smoothly with feed-forward
@@ -99,7 +100,7 @@ class MountController:
         self.track: TargetTrack | None = None
         self.track_after_slew = True
         self.events: deque[dict[str, Any]] = deque(maxlen=60)
-        self.offset = _Axes()  # pointing-model correction (mount = sky + offset)
+        self.model = PointingModel()  # maps mount axis readings <-> sky directions
         self._backlash_dir = _Axes(1.0, 1.0)
         self._az_cmd: float | None = None
         self._settle = 0
@@ -156,6 +157,10 @@ class MountController:
 
     def _sky_from_mount(self, st: DriverStatus) -> tuple[float, float]:
         """Best estimate of where the payload points (sky alt/az) from the mount's own sensors."""
+        return self.model.mount_to_sky(*self._mount_reading(st))
+
+    def _mount_reading(self, st: DriverStatus) -> tuple[float, float]:
+        """Raw axis angles of the output shafts (encoders, or step count minus backlash)."""
         if st.alt.encoder is not None and st.az.encoder is not None:
             alt_m, az_m = st.alt.encoder, st.az.encoder
         else:
@@ -164,7 +169,7 @@ class MountController:
             b_az = self.config.sim.backlash_az / 2 if comp else 0.0
             alt_m = st.alt.position - self._backlash_dir.alt * b_alt
             az_m = st.az.position - self._backlash_dir.az * b_az
-        return alt_m - self.offset.alt, (az_m - self.offset.az) % 360.0
+        return alt_m, az_m
 
     def _sun_separation_at(self, alt: float, az: float, t: float) -> float:
         s_alt, s_az = self.engine.sun_altaz(t)
@@ -200,7 +205,8 @@ class MountController:
                 )
             self._check_path_avoids_sun(alt, az)
         st = self.driver.status()
-        az_cmd = nearest_unwrapped(az + self.offset.az, st.az.position, self.limits.az_min, self.limits.az_max)
+        _, m_az = self.model.sky_to_mount(alt, az)
+        az_cmd = nearest_unwrapped(m_az, st.az.position, self.limits.az_min, self.limits.az_max)
         if az_cmd is None:
             raise CommandError("azimuth not reachable within cable-wrap limits")
         self.target = target
@@ -296,25 +302,54 @@ class MountController:
         return {"ok": True, "message": "Homing"}
 
     def sync(self, target_id: str) -> dict[str, Any]:
-        """Declare that the payload currently points at ``target_id`` (alignment)."""
+        """Declare that the payload currently points at ``target_id``: adds an alignment point."""
         self._require_operational()
-        target = self.engine.resolve(target_id)
+        try:
+            target = self.engine.resolve(target_id)
+        except TargetError as exc:
+            raise CommandError(str(exc)) from exc
+        if target.kind == "altaz":
+            raise CommandError("align on a star, planet or sky position, not a fixed horizon position")
         alt, az, _, _ = self.engine.altaz_rates(target, self._t)
+        if alt < 0:
+            raise CommandError(f"{target.name} is below the horizon")
+        return self.add_alignment_point(alt, az, target.name, "sync")
+
+    def add_alignment_point(self, sky_alt: float, sky_az: float, label: str, source: str) -> dict[str, Any]:
+        """Pair the current raw mount reading with an observed sky direction and refit the model."""
         st = self.driver.status()
-        m_alt = st.alt.encoder if st.alt.encoder is not None else st.alt.position
-        m_az = st.az.encoder if st.az.encoder is not None else st.az.position
-        self.offset = _Axes(m_alt - alt, wrap180(m_az - az))
-        self.log(f"Synced on {target.name}: offset alt {self.offset.alt:+.3f}°, az {self.offset.az:+.3f}°")
-        return {"ok": True, "message": "Synced", "offset": {"alt": self.offset.alt, "az": self.offset.az}}
+        m_alt, m_az = self._mount_reading(st)
+        for i, p in enumerate(self.model.points):
+            if separation(p.sky_alt, p.sky_az, sky_alt, sky_az) < 2.0 and abs(p.time - self._t) < 600:
+                # Re-centring on the same object replaces its previous point.
+                del self.model.points[i]
+                break
+        self.model.add(AlignmentPoint(m_alt, m_az, sky_alt, sky_az, label, self._t, source))
+        d = self.model.describe()
+        rms = d["rms"]
+        msg = (f"Alignment point '{label}' added ({len(self.model.points)} total, model: {d['terms']}"
+               + (f", RMS {rms * 3600:.0f}″)" if rms is not None and len(self.model.points) > 1 else ")"))
+        self.log(msg)
+        if self.track:
+            self.track.invalidate()
+        return {"ok": True, "message": msg, "model": d}
+
+    def remove_alignment_point(self, index: int) -> dict[str, Any]:
+        try:
+            self.model.remove(index)
+        except IndexError as exc:
+            raise CommandError(str(exc)) from exc
+        self.log(f"Alignment point {index + 1} removed")
+        return {"ok": True, "model": self.model.describe()}
 
     def apply_correction(self, d_alt: float, d_az: float) -> dict[str, Any]:
-        """Add a measured pointing correction (e.g. from plate solving) to the model."""
-        self.offset = _Axes(self.offset.alt + d_alt, self.offset.az + d_az)
+        """Shift the zero offsets by a measured correction (requested - measured)."""
+        self.model.shift_offsets(d_alt, d_az)
         self.log(f"Pointing correction applied: alt {d_alt:+.3f}°, az {d_az:+.3f}°")
-        return {"ok": True, "offset": {"alt": self.offset.alt, "az": self.offset.az}}
+        return {"ok": True, "model": self.model.describe()}
 
     def clear_sync(self) -> dict[str, Any]:
-        self.offset = _Axes()
+        self.model.clear()
         self.log("Pointing model cleared")
         return {"ok": True}
 
@@ -361,7 +396,8 @@ class MountController:
                 self.mode = Mode.IDLE
                 self.log(f"{self.target.name} is below the horizon at the new time; tracking stopped", "warning")
             else:
-                self._az_cmd = nearest_unwrapped(az + self.offset.az, st.az.position, self.limits.az_min, self.limits.az_max)
+                _, m_az = self.model.sky_to_mount(alt, az)
+                self._az_cmd = nearest_unwrapped(m_az, st.az.position, self.limits.az_min, self.limits.az_max)
         self._status = self.driver.status()
 
     def _control_step(self, t: float, wall: float) -> None:
@@ -453,7 +489,7 @@ class MountController:
                 self.log("Target entered the solar exclusion zone; tracking stopped", "warning")
                 return
         # Mechanical altitude reach (payload-dependent).
-        cmd_alt = alt + self.offset.alt
+        cmd_alt, az_m = self.model.sky_to_mount(alt, az)
         if cmd_alt > lim.max_altitude or cmd_alt < lim.min_altitude:
             self.flags.add("out_of_reach")
             cmd_alt = max(lim.min_altitude, min(lim.max_altitude, cmd_alt))
@@ -461,7 +497,6 @@ class MountController:
         else:
             self.flags.discard("out_of_reach")
         # Multi-turn azimuth with cable-wrap limits.
-        az_m = az + self.offset.az
         if self._az_cmd is None:
             self._az_cmd = nearest_unwrapped(az_m, st.az.position, lim.az_min, lim.az_max) or 0.0
         az_cmd = self._az_cmd + wrap180(az_m - self._az_cmd)
@@ -568,7 +603,7 @@ class MountController:
             "true_pointing_error": true_err,
             "flags": sorted(self.flags),
             "field_rotation_rate": field_rotation_rate(self.config.observer.latitude, est_alt, est_az),
-            "pointing_offset": {"alt": self.offset.alt, "az": self.offset.az},
+            "pointing_model": self.model.describe(),
             "driver": {
                 "connected": st.connected,
                 "homed": st.homed,

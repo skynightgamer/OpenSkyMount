@@ -31,8 +31,9 @@ use real time.
    Near the zenith the azimuth rate spikes, the flag `rate_limited` appears, and the error recovers after transit.
 3. **Cable wrap**: set `limits.az_min/max` to ±180 and track a southern star through the meridian to see the
    automatic unwind.
-4. **Alignment**: set `az_zero_offset = 0.8`, GoTo Capella, and note the true error of about 30′. Press
-   "Align: plate solve" and the error drops to under 1′.
+4. **Alignment**: set `az_zero_offset = 0.8`, `tilt_magnitude = 0.3`, and GoTo Capella; the true error is tens of
+   arcminutes. Press "Plate solve" in the Alignment panel to add a point. Repeat on two more stars spread around
+   the sky: the model switches to "offsets + base tilt" and errors everywhere drop below about 1′.
 5. **Faults**: inject `stall_az` during a slew and the mount stops with a fault. Reset (encoders re-reference) and
    Home.
 6. **Multi-device**: open the UI on two devices. Take control on one; the other shows the same state, and its

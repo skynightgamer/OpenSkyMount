@@ -52,6 +52,34 @@ interface Prepared {
   dsos: (Catalog["dsos"][number] & { v: Vec3 })[];
 }
 
+interface StarTier {
+  stars: Catalog["stars"];
+  starVec: Float64Array;
+}
+
+function prepareStars(stars: Catalog["stars"]): StarTier {
+  const starVec = new Float64Array(stars.length * 3);
+  stars.forEach((s, i) => starVec.set(radecToVec(s[1], s[2]), i * 3));
+  return { stars, starVec };
+}
+
+// Stars fainter than magnitude 6.5 (~32k) are fetched only once the user zooms in.
+const FAINT_FOV = 35;
+let faintTier: StarTier | null = null;
+let faintRequested = false;
+function requestFaint(): void {
+  if (faintRequested) return;
+  faintRequested = true;
+  fetch("/api/catalog?tier=faint")
+    .then((r) => r.json())
+    .then((c: { stars: Catalog["stars"] }) => (faintTier = prepareStars(c.stars)))
+    .catch(() => (faintRequested = false));
+}
+
+function findStar(cat: Prepared | null, hip: number): Catalog["stars"][number] | undefined {
+  return cat?.stars.find((x) => x[0] === hip) ?? faintTier?.stars.find((x) => x[0] === hip);
+}
+
 let catalogPromise: Promise<Prepared> | null = null;
 export function loadCatalog(): Promise<Prepared> {
   if (!catalogPromise) {
@@ -303,7 +331,7 @@ function nearestHit(hits: Hit[], x: number, y: number, maxPx: number): Hit | nul
 function hoverLabel(id: string, cat: Prepared | null, f?: Frame): string {
   if (id.startsWith("hip:") && cat) {
     const hip = Number(id.slice(4));
-    const s = cat.stars.find((x) => x[0] === hip);
+    const s = findStar(cat, hip);
     return s ? `${s[5] || "HIP " + hip}  (mag ${s[3].toFixed(1)})` : id;
   }
   if (id.startsWith("dso:") && cat) {
@@ -370,7 +398,9 @@ function render(
 
   if (fr && cat) {
     const m = advanceMatrix(fr.f.matrix, now - fr.f.time);
-    const limitMag = sunAlt > 0 ? 1.0 : sunAlt > -6 ? 2.5 : view.fov > 120 ? 5.0 : view.fov > 60 ? 5.5 : 6.5;
+    const limitMag =
+      sunAlt > 0 ? 1.0 : sunAlt > -6 ? 2.5 : view.fov > 120 ? 5.0 : view.fov > 60 ? 5.5 : view.fov > FAINT_FOV ? 6.5 : view.fov > 15 ? 7.3 : 8.0;
+    if (view.fov <= FAINT_FOV && sunAlt < -6) requestFaint();
 
     if (layers.equatorial) {
       ctx.strokeStyle = "rgba(90,160,255,0.22)";
@@ -420,35 +450,40 @@ function render(
       }
     }
 
-    // Stars.
-    const sv = cat.starVec;
+    // Stars (bright tier, then the faint tier when zoomed in and loaded).
     ctx.font = "11px 'Barlow Condensed', 'Arial Narrow', sans-serif";
     ctx.textAlign = "left";
     const zoomBoost = Math.max(0, Math.log2(100 / view.fov)) * 0.4;
-    for (let i = 0; i < cat.stars.length; i++) {
-      const s = cat.stars[i];
-      if (s[3] > limitMag) break; // sorted by magnitude
-      const x = sv[i * 3];
-      const y = sv[i * 3 + 1];
-      const z = sv[i * 3 + 2];
-      const v: Vec3 = [
-        m[0][0] * x + m[0][1] * y + m[0][2] * z,
-        m[1][0] * x + m[1][1] * y + m[1][2] * z,
-        m[2][0] * x + m[2][1] * y + m[2][2] * z,
-      ];
-      const p = project(b, v, 0);
-      if (!p || p[0] < -5 || p[0] > w + 5 || p[1] < -5 || p[1] > h + 5) continue;
-      const r = Math.max(0.6, (6.8 - s[3]) * 0.42 + zoomBoost);
-      ctx.fillStyle = bvColor(s[4]);
-      ctx.globalAlpha = v[2] < 0 ? 0.35 : 1;
-      ctx.beginPath();
-      ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
-      ctx.fill();
-      if (layers.labels && s[5] && (s[3] < 1.6 || (view.fov < 60 && s[3] < 3.5))) {
-        ctx.fillStyle = "rgba(220,230,255,0.75)";
-        ctx.fillText(s[5], p[0] + r + 3, p[1] + 3);
+    const tiers: StarTier[] = [{ stars: cat.stars, starVec: cat.starVec }];
+    if (limitMag > 6.5 && faintTier) tiers.push(faintTier);
+    for (const tier of tiers) {
+      const sv = tier.starVec;
+      for (let i = 0; i < tier.stars.length; i++) {
+        const s = tier.stars[i];
+        if (s[3] > limitMag) break; // sorted by magnitude
+        const x = sv[i * 3];
+        const y = sv[i * 3 + 1];
+        const z = sv[i * 3 + 2];
+        const v: Vec3 = [
+          m[0][0] * x + m[0][1] * y + m[0][2] * z,
+          m[1][0] * x + m[1][1] * y + m[1][2] * z,
+          m[2][0] * x + m[2][1] * y + m[2][2] * z,
+        ];
+        const p = project(b, v, 0);
+        if (!p || p[0] < -5 || p[0] > w + 5 || p[1] < -5 || p[1] > h + 5) continue;
+        const r = Math.max(0.6, (6.8 - s[3]) * 0.42 + zoomBoost);
+        ctx.fillStyle = bvColor(s[4]);
+        ctx.globalAlpha = (v[2] < 0 ? 0.35 : 1) * (s[3] > 6.5 ? 0.55 + 0.3 * (8 - s[3]) / 1.5 : 1);
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+        ctx.fill();
+        if (layers.labels && s[5] && (s[3] < 1.6 || (view.fov < 60 && s[3] < 3.5) || (view.fov < 20 && s[3] < 6.5))) {
+          ctx.fillStyle = "rgba(220,230,255,0.75)";
+          ctx.globalAlpha = 1;
+          ctx.fillText(s[5], p[0] + r + 3, p[1] + 3);
+        }
+        if (s[3] < 5.5 || view.fov < 40) hits.push({ id: "hip:" + s[0], x: p[0], y: p[1] });
       }
-      if (s[3] < 5.5 || view.fov < 40) hits.push({ id: "hip:" + s[0], x: p[0], y: p[1] });
     }
     ctx.globalAlpha = 1;
 
@@ -552,9 +587,8 @@ function markerVec(id: string, fr: { f: Frame }, cat: Prepared | null, now: numb
   const body = fr.f.bodies.find((x) => x.id === id);
   if (body) return mulMV(m, radecToVec(body.ra_j2000, body.dec_j2000));
   if (id.startsWith("hip:") && cat) {
-    const hip = Number(id.slice(4));
-    const i = cat.stars.findIndex((s) => s[0] === hip);
-    if (i >= 0) return mulMV(m, radecToVec(cat.stars[i][1], cat.stars[i][2]));
+    const s = findStar(cat, Number(id.slice(4)));
+    if (s) return mulMV(m, radecToVec(s[1], s[2]));
   }
   if (id.startsWith("dso:") && cat) {
     const d = cat.dsos.find((x) => "dso:" + x.id === id);

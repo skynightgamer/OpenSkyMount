@@ -26,3 +26,8 @@ _Last updated: 2026-10-31 (first autonomous session)._ Branch: `claude/gallant-t
   and would only spend credits. Once access is fixed, use `docs/CONTINUATION_PROMPT.md` in a new session (or
   schedule one).
 - **Session 2 (2026-11-01)**: branch pushed after GitHub access was granted; backup artifact deleted. UI redesigned as an instrument panel (bundled fonts, hairline layout, hand-controller keys, status lamps) and a red-light night mode added. E2E and frontend tests pass.
+- **Session 3 (2026-11-01)**: multi-star pointing model (zero offsets + base tilt; Sync and plate solving add
+  points; Alignment panel); star catalog extended to magnitude 8 with Hipparcos-2 proper motions and parallaxes
+  (lazy faint tier in the sky map); exposure planner (field rotation and fixed-tripod limits); observing planner
+  ("Best tonight" list, `/api/tonight`). 91 backend tests, 10 frontend unit tests and the extended browser E2E pass.
+

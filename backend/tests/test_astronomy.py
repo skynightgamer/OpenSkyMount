@@ -112,7 +112,10 @@ def test_horizon_matrix_matches_full_computation(engine: AstronomyEngine) -> Non
     m = eng.horizon_matrix(unix)
     for name in ("Vega", "Sirius", "Capella", "Deneb", "Betelgeuse"):
         target = eng.resolve(name)
-        ra, dec = math.radians(target.ra_deg), math.radians(target.dec_deg)
+        star = eng.catalog.star_by_hip(int(target.id[4:]))
+        year = 2000.0 + (unix - 946728000.0) / (365.25 * 86400)
+        ra_d, dec_d = eng.catalog.position_at(star, year)  # what the browser receives
+        ra, dec = math.radians(ra_d), math.radians(dec_d)
         v = np.array([math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)])
         alt_m, az_m = vec_to_altaz(m @ v)
         alt, az = eng.altaz(target, unix)
@@ -190,3 +193,67 @@ def test_altaz_to_radec_inverts_apparent_position(engine: AstronomyEngine) -> No
         d_ra = (back["ra_j2000"] - ref["ra_j2000"]) * math.cos(math.radians(ref["dec_j2000"]))
         # Refraction removed; residual = aberration/deflection differences (< 25").
         assert math.hypot(d_ra, back["dec_j2000"] - ref["dec_j2000"]) < 25 * ARCSEC, name
+
+
+def test_meeus_23a_proper_motion_apparent_place(engine: AstronomyEngine) -> None:
+    """θ Persei, apparent place 2028 Nov 13.19 TD (includes proper motion, precession, nutation, aberration)."""
+    from openskymount.astro.engine import Target
+
+    ra0, dec0 = hms(2, 44, 11.986), dms(49, 13, 42.48)
+    pm_ra_star = 0.03425 * 15 * 1000 * math.cos(math.radians(dec0))  # s/yr of RA -> mu_alpha* mas/yr
+    target = Target("test:theta-per", "θ Per", "star", ra_deg=ra0, dec_deg=dec0,
+                    pm_ra=pm_ra_star, pm_dec=-89.5, epoch_jd=2451545.0)
+    t = engine.ts.tt(2028, 11, 13.19)
+    ra, dec, _ = engine.earth.at(t).observe(engine._skyfield_body(target)).apparent().radec(epoch="date")
+    exp_ra, exp_dec = hms(2, 46, 14.390), dms(49, 21, 7.45)
+    assert abs(ra.hours * 15 - exp_ra) * math.cos(math.radians(exp_dec)) < 1.5 * ARCSEC
+    assert abs(dec.degrees - exp_dec) < 1.5 * ARCSEC
+
+
+def test_catalog_has_faint_stars_and_proper_motion(engine: AstronomyEngine) -> None:
+    cat = engine.catalog
+    assert len(cat.stars) > 40000 and max(s["mag"] for s in cat.stars) <= 8.0
+    s61 = cat.star_by_hip(104214)  # 61 Cyg A: large, well-known proper motion and parallax
+    assert abs(s61["pmra"] - 4168.3) < 5 and abs(s61["pmdec"] - 3269.2) < 5 and abs(s61["plx"] - 286.8) < 3
+    # The browser's linear propagation agrees with Skyfield's rigorous astrometry.
+    unix = dt.datetime(2026, 11, 1, tzinfo=dt.UTC).timestamp()
+    year = 2000.0 + (unix - 946728000.0) / (365.25 * 86400)
+    for hip in (104214, 69673, 57939, 32349):  # 61 Cyg A, Arcturus, Groombridge 1830, Sirius
+        star = cat.star_by_hip(hip)
+        ra_c, dec_c = cat.position_at(star, year)
+        target = engine.resolve(f"hip:{hip}")
+        ref = engine.earth.at(engine.time(unix)).observe(engine._skyfield_body(target)).radec()
+        d_ra = (ra_c - ref[0].hours * 15) * math.cos(math.radians(dec_c))
+        # Residual: parallax (<0.3") + aberration-free astrometric vs linear propagation.
+        assert math.hypot(d_ra, dec_c - ref[1].degrees) < 1.0 * ARCSEC, hip
+    # Proper motion matters: Arcturus moved > 60" since the Hipparcos epoch.
+    arcturus = cat.star_by_hip(69673)
+    ra91, dec91 = arcturus["ra"], arcturus["dec"]
+    ra26, dec26 = cat.position_at(arcturus, 2026.8)
+    assert math.hypot((ra26 - ra91) * math.cos(math.radians(dec91)), dec26 - dec91) > 60 * ARCSEC
+
+
+def test_field_rotation_matches_parallactic_angle_derivative(engine: AstronomyEngine) -> None:
+    """Closed-form alt-az field rotation rate vs numerical d(parallactic angle)/dt."""
+    lat = math.radians(engine.observer.latitude)
+    unix = dt.datetime(2026, 11, 1, 1, tzinfo=dt.UTC).timestamp()
+
+    def parallactic(target, t: float) -> float:
+        ha, dec, _ = engine.site.at(engine.time(t)).observe(engine._skyfield_body(target)).apparent().hadec()
+        h, d = math.radians(ha.hours * 15), dec.radians
+        return math.atan2(math.sin(h), math.tan(lat) * math.cos(d) - math.sin(d) * math.cos(h))
+
+    checked = 0
+    for name in ("Capella", "jupiter", "Vega", "Sirius", "M31", "Polaris"):
+        target = engine.resolve(name)
+        alt, az = (float(x) for x in engine.altaz(target, unix))
+        if alt < 10 or alt > 80:
+            continue
+        dq = (parallactic(target, unix + 30) - parallactic(target, unix - 30) + math.pi) % (2 * math.pi) - math.pi
+        numeric = math.degrees(dq) / 60.0
+        formula = engine.field_rotation_rate(alt, az)
+        # Convention: the reported rate is the field's rotation in the camera frame, which is
+        # opposite to the change of the parallactic angle (q measured towards the west).
+        assert abs(numeric + formula) < 0.02 * abs(formula) + 2e-6, (name, numeric, formula)
+        checked += 1
+    assert checked >= 3

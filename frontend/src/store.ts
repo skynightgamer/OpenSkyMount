@@ -20,7 +20,17 @@ export interface MountSnapshot {
   true_pointing_error: number | null;
   flags: string[];
   field_rotation_rate: number | null;
-  pointing_offset: { alt: number; az: number };
+  pointing_model: {
+    terms: string;
+    alt_off: number;
+    az_off: number;
+    tilt_n: number;
+    tilt_e: number;
+    tilt: number;
+    rms: number | null;
+    tilt_min_points: number;
+    points: { mount_alt: number; mount_az: number; sky_alt: number; sky_az: number; label: string; time: number; source: string; residual: number }[];
+  };
   driver: {
     connected: boolean;
     homed: boolean;

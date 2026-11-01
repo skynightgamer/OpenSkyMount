@@ -53,7 +53,12 @@ def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.dateti
         checked = 0
         for name in ("Vega", "Sirius", "Arcturus", "Canopus", "Polaris", "Altair"):
             target = eng.resolve(name)
-            sc = SkyCoord(ra=target.ra_deg * u.deg, dec=target.dec_deg * u.deg, frame="icrs").transform_to(frame)
+            # Independent proper-motion propagation from the Hipparcos epoch (J1991.25).
+            sc0 = SkyCoord(ra=target.ra_deg * u.deg, dec=target.dec_deg * u.deg,
+                           pm_ra_cosdec=target.pm_ra * u.mas / u.yr, pm_dec=target.pm_dec * u.mas / u.yr,
+                           distance=(1000.0 / max(target.parallax, 0.1)) * u.pc, radial_velocity=0 * u.km / u.s,
+                           obstime=Time(target.epoch_jd, format="jd", scale="tt"), frame="icrs")
+            sc = sc0.apply_space_motion(new_obstime=t).transform_to(frame)
             alt, az = eng.altaz(target, unix)
             assert separation(float(alt), float(az), sc.alt.deg, sc.az.deg) < 5 * ARCSEC, name
             checked += 1

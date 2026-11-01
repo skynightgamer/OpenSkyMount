@@ -9,6 +9,7 @@ import {
   TargetPanel,
   Telemetry,
 } from "./components/Panels";
+import { AlignmentPanel } from "./components/Planner";
 import MountView from "./mount/MountView";
 import SkyMap, { type Layers } from "./sky/SkyMap";
 import { useStore } from "./store";
@@ -89,6 +90,7 @@ export default function App() {
           <ControlAuthority />
           <TargetPanel />
           <MotionPanel />
+          <AlignmentPanel />
           <ClockPanel />
           <EventLog />
         </section>
