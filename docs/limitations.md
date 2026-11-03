@@ -19,7 +19,10 @@
 - **Moon brightness** is a constant (−12.7). The phase is computed and shown separately.
 - **Sky map** renders J2000 star vectors with the true-of-date horizon matrix, which leaves about 20″ of aberration
   unaccounted for (display only; GoTo uses full apparent positions).
-- **Security**: no authentication. Run only on trusted networks.
+- **Security**: an optional shared password over plain HTTP (no TLS). Run only on trusted networks.
+- **ASCOM Alpaca**: no `MoveAxis`, pulse guiding, park or find-home yet; `SlewToCoordinates`/`Sync` do not require
+  `Tracking=true` first (documented deviation). Tested with alpyca only, not with N.I.N.A./Stellarium or ConformU.
+  Discovery is IPv4 only. With simulated time, Alpaca clients see the simulated clock.
 - **Plate solving**: experimental and validated only on synthetic images. It needs `cedar-solve`, installed with
   `--no-deps`, plus a numpy-2 compatibility shim.
 - **Simulator idealisations**: homing and encoder re-referencing know which side of the backlash slack the gears

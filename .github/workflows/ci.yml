@@ -105,7 +105,7 @@ jobs:
         run: scripts/e2e.sh
       - name: Upload screenshots and server logs
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-screenshots-and-logs
           path: |

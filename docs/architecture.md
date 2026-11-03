@@ -59,7 +59,7 @@ receive and send intents. All devices see the same mount state because there is 
 | Astropy (BSD) | Authoritative (ERFA/SOFA), heavy, needs IERS downloads for best accuracy | Used **only** as an independent cross-check in tests |
 | Stellarium / Stellarium Web Engine (GPL-2.0 / AGPL-3.0) | Excellent planetarium, but copyleft and large, and hard to embed in a small MIT web UI | Not used. The sky map is our own (canvas). Stellarium can still drive the mount later through LX200/ASCOM adapters |
 | OnStepX (GPL-3.0) | Mature telescope firmware (alt-az supported, LX200 protocol, ESP32 support) | Recommended as an **alternative firmware path**. An LX200 adapter driver is planned (see hardware.md) |
-| INDI (LGPL) / ASCOM Alpaca (open spec) | Standard telescope-control ecosystems | Planned **server-side adapters** (expose OpenSkyMount as an Alpaca Telescope device) so tools like N.I.N.A./Stellarium can use it |
+| INDI (LGPL) / ASCOM Alpaca (open spec) | Standard telescope-control ecosystems | **Alpaca Telescope device implemented** (`server/alpaca.py`, see alpaca.md). INDI is not planned yet |
 | astrometry.net (BSD/GPL parts, large index files) | Gold-standard plate solver, but heavy and needs GB-sized indexes | Not used now |
 | **tetra3 / cedar-solve** (Apache-2.0) | Fast lost-in-space solver with a bundled database (10–30° FOV) and pure Python | **Chosen** for the optional plate-solving proof of concept |
 | Star data: Hipparcos via **d3-celestial** (BSD-3) | Ready-made mag ≤ 6 star list, names, constellation lines, Messier list | **Chosen** and converted to a compact JSON committed to the repo |
@@ -82,6 +82,10 @@ Rejected alternatives:
   with no control, so nothing queued on an old connection can move the mount.
 - Manual motion is dead-man protected (it must be refreshed within 1 s). It stops when control changes hands or the
   controller disconnects.
+- **ASCOM Alpaca clients** are sessions too (one per address + `ClientID`, created by `Connected=true`). They take
+  control automatically only when nobody holds it, and every Alpaca request refreshes their lease. `AbortSlew` counts
+  as a stop and is accepted from every client. Alpaca handlers are `async` so they run on the event-loop thread,
+  like the control loop. Details: [alpaca.md](alpaca.md).
 
 ## Extensibility
 - **Equatorial mounts**: add a `mount_type` capability and an HA/Dec target transform in the controller. The

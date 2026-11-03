@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import math
 import socket
 import threading
 import time
@@ -23,15 +24,21 @@ from .conftest import T0
 from .test_server import Cmd, recv_until
 
 BASE = "/api/v1/telescope/0"
-CAPELLA = "hip:24608"
+STAR = "hip:27989"  # Betelgeuse, 42° up at T0 (away from the zenith keyhole)
+
+
+def make_obs(tmp_path) -> Observatory:
+    o = Observatory(state_dir=tmp_path)
+    o.clock.set_time(T0)
+    o.clock.set_rate(20.0)  # fast slews; the controller is deterministic in simulation time
+    # Simulated encoder noise (7″ RMS, tested in test_motion.py) would hide the coordinate errors checked here.
+    o.apply_config({"sim": {"encoder_noise": 0.0}})
+    return o
 
 
 @pytest.fixture
 def obs(tmp_path) -> Observatory:
-    o = Observatory(state_dir=tmp_path)
-    o.clock.set_time(T0)
-    o.clock.set_rate(20.0)  # fast slews; the controller is deterministic in simulation time
-    return o
+    return make_obs(tmp_path)
 
 
 @pytest.fixture
@@ -158,7 +165,10 @@ def test_position_matches_engine(client: TestClient, obs: Observatory) -> None:
 def test_goto_sync_and_tracking(client: TestClient, obs: Observatory) -> None:
     al = Alpaca(client)
     al.ok("connected", Connected=True)
-    # Tracking=true follows the sky from the current direction (park: north horizon, a rising position).
+    # Tracking=true follows the sky from the current direction.
+    al.ok("slewtoaltazasync", Azimuth=90.0, Altitude=30.0)
+    al.wait_idle()
+    assert not al.value("tracking")
     al.ok("tracking", Tracking=True)
     assert al.value("tracking")
     al.wait_idle()
@@ -168,21 +178,25 @@ def test_goto_sync_and_tracking(client: TestClient, obs: Observatory) -> None:
     al.wait_idle()
     r = al.put("tracking", Tracking=True)
     assert r["ErrorNumber"] == 0x40B and "altitude" in r["ErrorMessage"]
-    ra, dec = jnow_of(obs, CAPELLA)
+    ra, dec = jnow_of(obs, STAR)
     al.ok("slewtocoordinatesasync", RightAscension=ra, Declination=dec)
     assert al.value("slewing") and al.value("tracking")
     assert al.value("targetrightascension") == ra
     al.wait_idle()
     assert al.value("tracking") and obs.controller.mode == "tracking"
     time.sleep(0.5)
-    # End to end: the payload points at Capella (with its proper motion and parallax) within a few arcseconds.
-    capella = obs.engine.resolve(CAPELLA)
-    t = obs.controller.sim_time
-    c_alt, c_az = obs.engine.altaz(capella, t)
-    p_alt, p_az = obs.controller.pointing()
-    assert separation(p_alt, p_az, float(c_alt), float(c_az)) < 10.0 / 3600
+    # End to end: the payload points at the star (with its proper motion and parallax) within a few arcseconds.
+    # Position and time come from one state message, built on the control-loop thread (consistent pair). "truth"
+    # is the simulator's real payload direction; "position" is the mount's own estimate.
+    star = obs.engine.resolve(STAR)
+    with client.websocket_connect("/ws?name=check") as ws:
+        m = recv_until(ws, lambda m: m["type"] == "state")["mount"]
+    c_alt, c_az = float(obs.engine.altaz(star, m["time"])[0]), float(obs.engine.altaz(star, m["time"])[1])
+    truth = m["driver"]["truth"]
+    assert separation(truth["alt"], truth["az"], c_alt, c_az) < 10.0 / 3600
+    assert separation(m["position"]["alt"], m["position"]["az"], c_alt, c_az) < 10.0 / 3600
     ra_now, dec_now = al.value("rightascension"), al.value("declination")
-    assert abs(ra_now - ra) * 15 * 3600 * 0.6 < 15 and abs(dec_now - dec) * 3600 < 15
+    assert abs(ra_now - ra) * 15 * 3600 * math.cos(math.radians(dec)) < 15 and abs(dec_now - dec) * 3600 < 15
     # Sync adds an alignment point.
     n0 = len(obs.controller.model.points)
     al.ok("synctocoordinates", RightAscension=ra, Declination=dec)
@@ -221,10 +235,10 @@ def test_safety_and_control_authority(client: TestClient, obs: Observatory) -> N
     with client.websocket_connect("/ws?name=browser") as ws:
         ui = Cmd(ws)
         assert ui.control()["granted"]
-        ra, dec = jnow_of(obs, CAPELLA)
+        ra, dec = jnow_of(obs, STAR)
         r = al.put("slewtocoordinatesasync", RightAscension=ra, Declination=dec)
         assert r["ErrorNumber"] == 0x40B and "browser has control" in r["ErrorMessage"]
-        assert ui("goto", target=CAPELLA)["ok"]
+        assert ui("goto", target=STAR)["ok"]
         recv_until(ws, lambda m: m["type"] == "state" and m["mount"]["mode"] == "slewing")
         al.ok("abortslew")  # a stop is accepted from every client
         assert obs.controller.mode == "idle"  # and does not resume tracking for the browser's slew
@@ -314,9 +328,7 @@ def test_end_to_end_with_alpyca(tmp_path) -> None:
     exceptions = pytest.importorskip("alpaca.exceptions")
     import uvicorn
 
-    obs = Observatory(state_dir=tmp_path)
-    obs.clock.set_time(T0)
-    obs.clock.set_rate(20.0)
+    obs = make_obs(tmp_path)
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(create_app(observatory=obs), host="127.0.0.1", port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
@@ -334,14 +346,15 @@ def test_end_to_end_with_alpyca(tmp_path) -> None:
         assert t.EquatorialSystem == telescope.EquatorialCoordinateType.equTopocentric
         assert t.AlignmentMode == telescope.AlignmentModes.algAltAz
         assert t.UTCDate.year == 2026
-        ra, dec = jnow_of(obs, CAPELLA)
+        ra, dec = jnow_of(obs, STAR)
         t.SlewToCoordinatesAsync(ra, dec)
         end = time.time() + 30
         while t.Slewing:
             assert time.time() < end
             time.sleep(0.1)
         assert t.Tracking
-        assert abs(t.RightAscension - ra) * 15 * 3600 * 0.6 < 15 and abs(t.Declination - dec) * 3600 < 15
+        time.sleep(1.0)  # let tracking settle (20 s of simulated time), as an imaging program would
+        assert abs(t.RightAscension - ra) * 15 * 3600 * math.cos(math.radians(dec)) < 15 and abs(t.Declination - dec) * 3600 < 15
         with pytest.raises(exceptions.InvalidValueException):
             t.SlewToCoordinatesAsync(25.0, 0.0)
         with pytest.raises(exceptions.NotImplementedException):

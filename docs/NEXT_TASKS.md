@@ -1,8 +1,8 @@
 # Next tasks (ordered)
 
-1. Continuous integration on GitHub (backend and frontend checks, E2E with Playwright).
-2. ASCOM Alpaca Telescope device endpoint (`/api/v1/telescope/0/...`) so N.I.N.A., Stellarium and similar can drive
-   OpenSkyMount. Read-only properties first, then SlewToCoordinatesAsync, AbortSlew and Tracking.
+1. Alpaca follow-ups: run ASCOM ConformU against `/api/v1/telescope/0` (needs a machine that can download it) and
+   test with N.I.N.A.; then `MoveAxis` with a dead-man design (D32) and `PulseGuide`.
+2. Show Alpaca connection details (address, port, device 0) in the Settings panel.
 3. LX200 / OnStepX driver adapter (`mount/onstep_driver.py`) with a fake LX200 endpoint for tests.
 4. Plate solving from uploaded real images (camera frames), with distortion-tolerance tests on public-domain sky
    images.
