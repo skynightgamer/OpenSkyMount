@@ -3,7 +3,7 @@
 Responsibilities:
 * convert Unix time to Skyfield time (leap-second aware, offline)
 * resolve target identifiers (stars, planets, Moon, Sun, Messier objects,
-  arbitrary RA/Dec, fixed Alt/Az)
+  arbitrary RA/Dec, fixed Alt/Az, and user-supplied satellites / comets / asteroids)
 * compute apparent topocentric Alt/Az (optionally with refraction), vectorised over time
 * provide the ICRS -> horizon rotation used by the browser sky map
 * object information (RA/Dec, rise/transit/set, magnitudes, rates, field rotation)
@@ -20,11 +20,15 @@ from typing import Any
 
 import numpy as np
 from skyfield import almanac
-from skyfield.api import Star, load, load_file, wgs84
+from skyfield.api import EarthSatellite, Star, load, load_file, wgs84
 from skyfield.timelib import Time
 
 from ..config import ObserverConfig
 from .catalog import Catalog, load_catalog
+from .orbits import MinorBodyElements, OrbitStore, SatelliteElements
+
+MAX_FRAME_ORBIT_OBJECTS = 50  # user-supplied objects drawn on the sky map
+TLE_STALE_DAYS = 14.0
 
 SIDEREAL_RATE_DEG_S = 360.0 / 86164.0905  # Earth rotation, deg per SI second
 
@@ -62,7 +66,7 @@ class TargetError(ValueError):
 class Target:
     id: str
     name: str
-    kind: str  # star | planet | moon | sun | dso | radec | altaz
+    kind: str  # star | planet | moon | sun | dso | radec | altaz | satellite | comet | asteroid
     ra_deg: float | None = None  # J2000 / ICRS for fixed objects
     dec_deg: float | None = None
     alt_deg: float | None = None  # only for kind == altaz
@@ -79,7 +83,17 @@ class Target:
 
     @property
     def solar_system(self) -> bool:
-        return self.kind in ("planet", "moon", "sun")
+        return self.kind in ("planet", "moon", "sun", "comet", "asteroid")
+
+    @property
+    def fast(self) -> bool:
+        """Moves across the sky much faster than the stars (Earth satellites): needs dense trajectory sampling."""
+        return self.kind == "satellite"
+
+    @property
+    def from_elements(self) -> bool:
+        """Position comes from user-supplied orbital elements."""
+        return self.kind in ("satellite", "comet", "asteroid")
 
     @property
     def is_sun(self) -> bool:
@@ -102,11 +116,14 @@ class Target:
 
 
 class AstronomyEngine:
-    def __init__(self, observer: ObserverConfig | None = None, catalog: Catalog | None = None) -> None:
+    def __init__(self, observer: ObserverConfig | None = None, catalog: Catalog | None = None,
+                 orbits: OrbitStore | None = None) -> None:
         self.eph = _ephemeris()
         self.ts = _timescale()
         self.earth = self.eph["earth"]
         self.catalog = catalog or load_catalog()
+        self.orbits = orbits if orbits is not None else OrbitStore()
+        self._orbit_rev = self.orbits.revision
         self.set_observer(observer or ObserverConfig())
 
     # ------------------------------------------------------------------ setup
@@ -174,6 +191,12 @@ class AstronomyEngine:
                 raise TargetError("RA must be in [0,360) deg and Dec in [-90,90] deg")
             return Target(f"radec:{ra:.5f},{dec:.5f}", f"RA {ra:.3f}° Dec {dec:+.3f}°", "radec",
                           ra_deg=ra, dec_deg=dec, type_label="Sky position (J2000)")
+        for prefix in ("sat:", "comet:", "asteroid:"):
+            if low.startswith(prefix):
+                el = self.orbits.find(prefix[:-1], tid[len(prefix):])
+                if el is None:
+                    raise TargetError(f"no orbital elements loaded for {target_id!r}")
+                return self._orbit_target(el)
         if low.startswith("altaz:"):
             alt, az = _parse_pair(tid[6:])
             if not -90 <= alt <= 90:
@@ -185,9 +208,55 @@ class AstronomyEngine:
         hits = self.catalog.search(tid, limit=1, planets=PLANETS)
         if hits and hits[0]["score"] >= 90:
             return self.resolve(hits[0]["id"])
+        orbit_hits = self.orbits.search(tid, 1)
+        if orbit_hits and orbit_hits[0]["score"] >= 100:
+            return self.resolve(orbit_hits[0]["id"])
         raise TargetError(f"unknown target {target_id!r}")
 
+    @staticmethod
+    def _orbit_target(el: SatelliteElements | MinorBodyElements) -> Target:
+        if isinstance(el, SatelliteElements):
+            return Target(el.id, el.name, "satellite", type_label="Earth satellite (TLE)")
+        label = "Comet (MPC elements)" if el.kind == "comet" else "Minor planet (MPC elements)"
+        return Target(el.id, el.name, el.kind, type_label=label)
+
+    def search(self, q: str, limit: int) -> list[dict[str, Any]]:
+        """Catalog search plus loaded satellites / comets / asteroids, best matches first."""
+        hits = self.catalog.search(q, limit=limit, planets=PLANETS) + self.orbits.search(q, limit)
+        hits.sort(key=lambda h: -h.get("score", 0))
+        return hits[:limit]
+
+    def _orbit_body(self, target: Target) -> Any:
+        el = self.orbits.get(target.id)
+        if el is None:
+            raise TargetError(f"orbital elements for {target.name} were removed")
+        if isinstance(el, SatelliteElements):
+            return EarthSatellite(el.line1, el.line2, el.name, self.ts)
+        from skyfield.constants import GM_SUN_Pitjeva_2005_km3_s2 as GM_SUN
+        from skyfield.data.spice import inertial_frames
+        from skyfield.keplerlib import _KeplerOrbit
+
+        # Same construction as skyfield.data.mpc.comet_orbit / mpcorb_orbit (which require pandas).
+        if el.mean_anomaly is None:
+            orbit = _KeplerOrbit._from_periapsis(
+                el.semilatus_rectum, el.e, el.i, el.node, el.peri,
+                self.ts.tt(el.tp_year, el.tp_month, el.tp_day), GM_SUN, 10, el.name)
+        else:
+            orbit = _KeplerOrbit._from_mean_anomaly(
+                el.semilatus_rectum, el.e, el.i, el.node, el.peri, el.mean_anomaly,
+                self.ts.tt(el.epoch_year, el.epoch_month, el.epoch_day), GM_SUN, 10, el.name)
+        orbit._rotation = inertial_frames["ECLIPJ2000"].T
+        return self.eph["sun"] + orbit
+
     def _skyfield_body(self, target: Target) -> Any:
+        if self._orbit_rev != self.orbits.revision:
+            self._orbit_rev = self.orbits.revision
+            self._target_cache = {}
+        if target.from_elements:
+            body = self._target_cache.get(target.id)
+            if body is None:
+                body = self._target_cache[target.id] = self._orbit_body(target)
+            return body
         if target.kind == "planet":
             return self.eph[PLANETS[target.id.split(":", 1)[1]][1]]
         if target.kind == "moon":
@@ -210,6 +279,9 @@ class AstronomyEngine:
         raise TargetError(f"target {target.id} has no celestial position")
 
     def apparent(self, target: Target, t: Time) -> Any:
+        if target.kind == "satellite":
+            # Topocentric SGP4 position (light time and aberration are negligible at these distances).
+            return (self._skyfield_body(target) - self.topos).at(t)
         return self.site.at(t).observe(self._skyfield_body(target)).apparent()
 
     # --------------------------------------------------------------- positions
@@ -240,6 +312,13 @@ class AstronomyEngine:
         if target.kind == "altaz":
             return self.altaz_to_radec(target.alt_deg or 0.0, target.az_deg or 0.0, unix)
         t = self.time(unix)
+        if target.kind == "satellite":
+            astrometric = self.apparent(target, t)
+            ra, dec, dist = astrometric.radec()
+            ra_d, dec_d, _ = astrometric.radec(epoch="date")
+            return {"ra_j2000": float(ra.hours) * 15.0, "dec_j2000": float(dec.degrees),
+                    "ra_date": float(ra_d.hours) * 15.0, "dec_date": float(dec_d.degrees),
+                    "distance_au": float(dist.au)}
         astrometric = self.site.at(t).observe(self._skyfield_body(target))
         ra, dec, dist = astrometric.radec()
         ra_d, dec_d, _ = astrometric.apparent().radec(epoch="date")
@@ -331,6 +410,12 @@ class AstronomyEngine:
         t1 = self.time(unix + hours * 3600.0)
         body = self._skyfield_body(target)
         out: dict[str, Any] = {}
+        if target.kind == "satellite":
+            passes = self.satellite_passes(target, unix, hours=hours, limit=1)
+            if passes:
+                return {"rise": passes[0]["rise"], "transit": passes[0]["culminate"], "set": passes[0]["set"],
+                        "circumpolar": False}
+            return {"rise": None, "transit": None, "set": None, "circumpolar": False, "never_rises": True}
         try:
             for key, fn in (("rise", almanac.find_risings), ("set", almanac.find_settings)):
                 times, flags = fn(self.site, body, t0, t1)
@@ -355,6 +440,8 @@ class AstronomyEngine:
             return target.magnitude
         if target.kind == "moon":
             return -12.7  # full-Moon value; phase-dependent brightness not modelled
+        if target.kind in ("comet", "asteroid"):
+            return self._minor_magnitude(target, unix)
         if target.kind == "planet":
             try:
                 from skyfield.magnitudelib import planetary_magnitude
@@ -364,6 +451,59 @@ class AstronomyEngine:
             except Exception:
                 return None
         return None
+
+    def _minor_magnitude(self, target: Target, unix: float) -> float | None:
+        """Estimated magnitude from the MPC parameters (comets: g, k; asteroids: H, G)."""
+        el = self.orbits.get(target.id)
+        if not isinstance(el, MinorBodyElements) or el.mag1 is None:
+            return None
+        t = self.time(unix)
+        body = self._skyfield_body(target)
+        delta = float(self.earth.at(t).observe(body).distance().au)
+        r = float((body.at(t) - self.eph["sun"].at(t)).distance().au)
+        if delta <= 0 or r <= 0:
+            return None
+        if el.kind == "comet":
+            return el.mag1 + 5 * math.log10(delta) + 2.5 * (el.mag2 if el.mag2 is not None else 4.0) * math.log10(r)
+        # IAU H, G system (Bowell et al. 1989).
+        g = el.mag2 if el.mag2 is not None else 0.15
+        earth_sun = float(self.earth.at(t).observe(self.eph["sun"]).distance().au)
+        cos_phase = max(-1.0, min(1.0, (r * r + delta * delta - earth_sun * earth_sun) / (2 * r * delta)))
+        tan_half = math.tan(math.acos(cos_phase) / 2)
+        phi1 = math.exp(-3.33 * tan_half**0.63)
+        phi2 = math.exp(-1.87 * tan_half**1.22)
+        return el.mag1 + 5 * math.log10(r * delta) - 2.5 * math.log10((1 - g) * phi1 + g * phi2)
+
+    def satellite_passes(self, target: Target, unix: float, hours: float = 24.0, min_alt: float = 10.0,
+                         limit: int = 10) -> list[dict[str, Any]]:
+        """Passes above ``min_alt`` within ``hours``: rise, culmination (time, altitude), set, and whether the
+        satellite is sunlit at culmination (visible to the eye only when sunlit and the sky is dark)."""
+        if target.kind != "satellite":
+            raise TargetError("passes are only computed for Earth satellites")
+        sat = self._skyfield_body(target)
+        t0, t1 = self.time(unix), self.time(unix + hours * 3600.0)
+        times, events = sat.find_events(self.topos, t0, t1, altitude_degrees=min_alt)
+        passes: list[dict[str, Any]] = []
+        cur: dict[str, Any] = {}
+        for ti, ev in zip(times, events, strict=False):
+            u = _unix_of(ti)
+            if ev == 0:
+                cur = {"rise": u}
+            elif ev == 1:
+                if "rise" not in cur:
+                    cur = {"rise": unix}  # already up at the start of the search
+                alt, az, _ = (sat - self.topos).at(ti).altaz()
+                if "culminate" not in cur or alt.degrees > cur["max_alt"]:
+                    cur.update(culminate=u, max_alt=float(alt.degrees), culminate_az=float(az.degrees),
+                               sunlit=bool(sat.at(ti).is_sunlit(self.eph)),
+                               sun_alt=float(self.sun_altaz(u)[0]))
+            elif ev == 2 and "culminate" in cur:
+                cur["set"] = u
+                passes.append(cur)
+                cur = {}
+                if len(passes) >= limit:
+                    break
+        return passes
 
     def sun_separation(self, target: Target, unix: float) -> float:
         if target.is_sun:
@@ -400,6 +540,13 @@ class AstronomyEngine:
         }
         if target.kind == "moon":
             info.update(self.moon_phase(unix))
+        if target.kind == "satellite":
+            sat = self._skyfield_body(target)
+            el = self.orbits.get(target.id)
+            info["sunlit"] = bool(sat.at(self.time(unix)).is_sunlit(self.eph))
+            info["elements_age_days"] = (unix - el.epoch_unix) / 86400.0 if isinstance(el, SatelliteElements) else None
+        if target.kind in ("comet", "asteroid"):
+            info["elements"] = "two-body orbit from MPC elements (J2000 ecliptic), perturbations ignored"
         if with_events:
             info["events"] = self.events(target, unix)
         info["notes"] = self.tracking_notes(target, info)
@@ -413,8 +560,18 @@ class AstronomyEngine:
             notes.append("Below the horizon: GoTo is not possible right now.")
         if info["alt"] > 80.0:
             notes.append("Near the zenith: azimuth rate is high; an alt-az mount may lag (zenith keyhole).")
-        if target.solar_system and not target.is_sun:
+        if target.kind in ("planet", "moon"):
             notes.append("Solar-system object: position is recomputed from the ephemeris during tracking.")
+        if target.kind in ("comet", "asteroid"):
+            notes.append("Position from user-supplied MPC elements (two-body orbit); accuracy degrades far from "
+                         "the element epoch.")
+        if target.kind == "satellite":
+            notes.append("Earth satellite (SGP4 from a user-supplied TLE): fast tracking, the sky position changes "
+                         "by up to about 1° per second.")
+            age = info.get("elements_age_days")
+            if age is not None and abs(age) > TLE_STALE_DAYS:
+                notes.append(f"TLE is {abs(age):.0f} days from its epoch: predictions may be off by many degrees; "
+                             "load fresh elements.")
         if target.kind == "altaz":
             notes.append("Fixed horizon position: the mount holds still, no sidereal tracking.")
         if not target.is_sun and info.get("sun_separation", 180.0) < 15.0:
@@ -422,6 +579,12 @@ class AstronomyEngine:
         return notes
 
     # -------------------------------------------------------------- sky frame
+    def _frame_orbit_targets(self) -> list[Target]:
+        els: list[SatelliteElements | MinorBodyElements] = [*self.orbits.satellites.values(),
+                                                            *self.orbits.minor.values()]
+        els = els[:MAX_FRAME_ORBIT_OBJECTS]
+        return [self._orbit_target(e) for e in els]
+
     def frame(self, unix: float) -> dict[str, Any]:
         """Everything the browser needs to render the sky at ``unix``."""
         t = self.time(unix)
@@ -444,6 +607,19 @@ class AstronomyEngine:
                     "distance_au": float(dist.au),
                 }
             )
+        for target in self._frame_orbit_targets():
+            try:
+                obs = self.apparent(target, t)
+                alt, az, dist = obs.altaz(**refr)
+                if target.kind == "satellite" and alt.degrees < 0:
+                    continue
+                ra, dec, _ = obs.radec() if target.kind == "satellite" else site_at.observe(
+                    self._skyfield_body(target)).radec()
+                bodies.append({**target.summary(), "ra_j2000": float(ra.hours) * 15.0,
+                               "dec_j2000": float(dec.degrees), "alt": float(alt.degrees), "az": float(az.degrees),
+                               "magnitude": None, "distance_au": float(dist.au)})
+            except Exception:  # pragma: no cover - a broken element set must not break the sky map
+                continue
         sun_alt = bodies[0]["alt"]
         return {
             "time": unix,

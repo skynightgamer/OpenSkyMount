@@ -15,19 +15,22 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import __version__
 from ..astro.catalog import BRIGHT_LIMIT
-from ..astro.engine import PLANETS, AstronomyEngine, TargetError
+from ..astro.engine import AstronomyEngine, TargetError
+from ..astro.orbits import ElementError, OrbitStore
 from ..clock import SimClock
 from ..config import PAYLOADS, AppConfig
-from ..mount.controller import CommandError, MountController
+from ..mount.controller import CommandError, Mode, MountController
 from ..mount.driver import MountDriver
+from ..mount.sequencer import Sequencer
 from ..mount.sim_driver import INJECTABLE_FAULTS, SimulatedMountDriver
 from .alpaca import AlpacaTelescope, register_alpaca, start_discovery, unique_id_for
 from .auth import COOKIE, OPEN_PATHS, Auth, RateLimited
+from .recorder import RecorderError, TelemetryRecorder
 from .sessions import SessionManager
 
 log = logging.getLogger("openskymount")
@@ -66,10 +69,15 @@ class Observatory:
         self.config_path = state_dir / "config.json" if state_dir else None
         self.config = AppConfig.load(self.config_path) if self.config_path else AppConfig()
         self.clock = clock or SimClock()
-        self.engine = AstronomyEngine(self.config.observer)
+        self.orbits = OrbitStore(state_dir / "orbits.json" if state_dir else None)
+        self.engine = AstronomyEngine(self.config.observer, orbits=self.orbits)
         now = self.clock.now()
         self.driver = make_driver(driver_spec, self.config, now)
         self.controller = MountController(self.engine, self.driver, self.config, now)
+        self.sequencer = Sequencer(self.controller, state_dir / "queue.json" if state_dir else None)
+        self.recorder = TelemetryRecorder(state_dir / "logs" if state_dir else None)
+        self._session_recording = False  # recording started together with the observing session
+        self.sequencer.on_finished.append(self._session_finished)
         self.sessions = SessionManager(self.config.control.control_lease_s)
         self._task: asyncio.Task[None] | None = None
         self.started = time.time()
@@ -79,6 +87,13 @@ class Observatory:
     # ------------------------------------------------------------ main loop
     def tick(self) -> None:
         self.controller.update(self.clock.now(), time.time(), self.clock.epoch)
+        self.sequencer.update(self.controller.sim_time)
+
+    def _session_finished(self, why: str) -> None:
+        if self._session_recording and why == "complete":
+            self.recorder.stop()
+            self._session_recording = False
+            self.controller.log("Telemetry recording stopped (session complete)")
 
     async def run(self) -> None:
         n = 0
@@ -88,7 +103,9 @@ class Observatory:
                 self.tick()
                 n += 1
                 if n % BROADCAST_EVERY == 0:
-                    self.broadcast(self.state_message())
+                    msg = self.state_message()
+                    self.recorder.record(msg["mount"], time.time())
+                    self.broadcast(msg)
                 if n % 20 == 0:
                     self._expire_control()
                     for hook in self.housekeeping:
@@ -102,6 +119,7 @@ class Observatory:
             self._task = asyncio.get_running_loop().create_task(self.run())
 
     async def stop(self) -> None:
+        self.recorder.stop()
         if self._task:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -132,6 +150,9 @@ class Observatory:
                 "mount": self.controller.snapshot(),
                 "clock": self.clock_info(),
                 "control": self.sessions.describe(time.time()),
+                "session": self.sequencer.describe(),
+                "recording": self.recorder.describe(),
+                "orbits_revision": self.orbits.revision,
             }
         )
 
@@ -226,6 +247,55 @@ class Observatory:
         if "paused" in args:
             self.clock.set_paused(bool(args["paused"]))
 
+    def _record_start(self, label: str) -> str:
+        try:
+            name = self.recorder.start(time.time(), label, {
+                "site": asdict(self.config.observer), "payload": self.config.payload,
+                "driver": self.driver.capabilities().to_dict(), "sim_time": self.clock.now()})
+        except RecorderError as exc:
+            raise CommandError(str(exc)) from exc
+        self.controller.log(f"Telemetry recording started ({name})")
+        return name
+
+    def _queue_command(self, cmd: str, args: dict[str, Any]) -> dict[str, Any]:
+        q = self.sequencer
+        if cmd == "queue_add":
+            start = args.get("start_at")
+            dur = args.get("duration_s", 600.0)
+            item = q.add(str(args.get("target", "")), None if start is None else float(start),
+                         None if dur is None else float(dur))
+            return {"ok": True, "message": f"{item.name} added to the session", "id": item.id}
+        if cmd == "queue_remove":
+            q.remove(str(args.get("id")))
+        elif cmd == "queue_move":
+            q.move(str(args.get("id")), int(args.get("delta", 0)))
+        elif cmd == "queue_clear":
+            q.clear(bool(args.get("finished_only", False)))
+        elif cmd == "queue_reset":
+            q.reset()
+        elif cmd == "queue_start":
+            msg = q.start()
+            if args.get("record") and not self.recorder.active:
+                self._record_start("session")
+                self._session_recording = True
+            return {"ok": True, "message": msg}
+        elif cmd == "queue_pause":
+            q.pause()
+        elif cmd == "queue_skip":
+            q.skip()
+        else:
+            raise CommandError(f"unknown command {cmd!r}")
+        return {"ok": True}
+
+    def remove_orbit(self, target_id: str) -> None:
+        c = self.controller
+        if c.target is not None and c.target.id == target_id:
+            if c.mode in (Mode.SLEWING, Mode.TRACKING):
+                raise CommandError("the mount is following this object; stop tracking first")
+            c.target, c.track = None, None
+        if not self.orbits.remove(target_id):
+            raise CommandError(f"no orbital elements for {target_id!r}")
+
     def execute(self, sid: str, cmd: str, args: dict[str, Any]) -> dict[str, Any]:
         now = time.time()
         c = self.controller
@@ -258,6 +328,17 @@ class Observatory:
             return c.clear_sync()
         if cmd == "apply_correction":
             return c.apply_correction(float(args["d_alt"]), float(args["d_az"]))
+        if cmd.startswith("queue_"):
+            return self._queue_command(cmd, args)
+        if cmd == "record_start":
+            name = self._record_start(str(args.get("label", "")))
+            return {"ok": True, "message": f"Recording telemetry to {name}", "name": name}
+        if cmd == "record_stop":
+            stopped = self.recorder.stop()
+            self._session_recording = False
+            if stopped:
+                c.log(f"Telemetry recording stopped ({stopped})")
+            return {"ok": True, "message": "Recording stopped", "name": stopped}
         if cmd == "set_clock":
             self.set_clock(args)
             return {"ok": True, "message": "Clock updated"}
@@ -410,7 +491,7 @@ def create_app(
 
     @app.get("/api/search")
     def search(q: str = Query(..., min_length=1, max_length=64), limit: int = Query(15, ge=1, le=50)) -> list[dict[str, Any]]:
-        return obsv().engine.catalog.search(q, limit=limit, planets=PLANETS)
+        return obsv().engine.search(q, limit)
 
     @app.get("/api/object")
     def obj(id: str = Query(..., min_length=1, max_length=64), t: float | None = None) -> JSONResponse:  # noqa: A002
@@ -438,6 +519,86 @@ def create_app(
             cache.clear()
             cache[key] = _finite(best_targets(o.engine, unix, min_alt=min_alt, kind=kind, limit=limit))
         return JSONResponse(cache[key])
+
+    # ---- user-supplied orbital elements (satellites, comets, asteroids)
+    @app.get("/api/orbits")
+    def orbits_list() -> JSONResponse:
+        o = obsv()
+        return JSONResponse(_finite({"objects": o.orbits.describe(o.clock.now()), "revision": o.orbits.revision}))
+
+    @app.post("/api/orbits")
+    async def orbits_add(request: Request) -> JSONResponse:
+        o = obsv()
+        body = await request.body()
+        if len(body) > 6_000_000:
+            raise HTTPException(413, "too large")
+        ctype = request.headers.get("content-type", "")
+        try:
+            text = json.loads(body).get("text", "") if "json" in ctype else body.decode("utf-8", "replace")
+        except (ValueError, AttributeError) as exc:
+            raise HTTPException(400, "expected JSON {\"text\": ...} or plain text") from exc
+        try:
+            res = o.orbits.add_text(str(text))
+        except ElementError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        o.controller.log(f"Orbital elements loaded: {len(res['added'])} object(s)")
+        o.broadcast({"type": "orbits", "revision": o.orbits.revision})
+        return JSONResponse({"ok": True, **res})
+
+    @app.delete("/api/orbits")
+    async def orbits_delete(id: str | None = None) -> JSONResponse:  # noqa: A002
+        o = obsv()
+        try:
+            if id is None:
+                c = o.controller
+                if c.target is not None and c.target.from_elements and c.mode in (Mode.SLEWING, Mode.TRACKING):
+                    raise CommandError("the mount is following one of these objects; stop tracking first")
+                if c.target is not None and c.target.from_elements:
+                    c.target, c.track = None, None
+                o.orbits.clear()
+            else:
+                o.remove_orbit(id)
+        except CommandError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        o.broadcast({"type": "orbits", "revision": o.orbits.revision})
+        return JSONResponse({"ok": True})
+
+    @app.get("/api/passes")
+    def passes(
+        id: str = Query(..., min_length=1, max_length=64),  # noqa: A002
+        t: float | None = None,
+        hours: float = Query(24.0, gt=0.0, le=72.0),
+        min_alt: float = Query(10.0, ge=0.0, le=80.0),
+    ) -> JSONResponse:
+        o = obsv()
+        try:
+            target = o.engine.resolve(id)
+            res = o.engine.satellite_passes(target, when(t), hours=hours, min_alt=min_alt, limit=20)
+        except TargetError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return JSONResponse(_finite({"id": target.id, "name": target.name, "passes": res}))
+
+    # ---- telemetry recordings
+    @app.get("/api/logs")
+    def logs_list() -> JSONResponse:
+        o = obsv()
+        return JSONResponse({"logs": o.recorder.list(), "recording": o.recorder.describe()})
+
+    @app.get("/api/logs/{name}")
+    def logs_get(name: str) -> FileResponse:
+        try:
+            path = obsv().recorder.path(name)
+        except RecorderError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return FileResponse(path, media_type="application/x-ndjson", filename=name)
+
+    @app.delete("/api/logs/{name}")
+    def logs_delete(name: str) -> JSONResponse:
+        try:
+            obsv().recorder.delete(name)
+        except RecorderError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return JSONResponse({"ok": True})
 
     @app.get("/api/status")
     def status() -> JSONResponse:

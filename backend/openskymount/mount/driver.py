@@ -90,6 +90,12 @@ class MountDriver(ABC):
     @abstractmethod
     def capabilities(self) -> Capabilities: ...
 
+    @property
+    def command_latency(self) -> float:
+        """Expected delay (s) between sending a setpoint and the axis acting on it. The controller leads its
+        setpoints by this much, which matters for fast targets (satellites). 0 when unknown."""
+        return 0.0
+
     @abstractmethod
     def connect(self) -> None: ...
 
