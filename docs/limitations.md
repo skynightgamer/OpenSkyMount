@@ -11,8 +11,16 @@
 - **Pointing model**: fits axis zero offsets (1+ stars) and base tilt (3+ stars). Cone error and axis
   non-perpendicularity are not modelled, so heavily misbuilt mounts keep residual errors.
 - **Catalog**: stars to magnitude 8 (Hipparcos-2 astrometry, proper motion and parallax; 17 stars without a
-  Hipparcos-2 solution keep a fixed J2000 position). There are no deep-sky objects beyond the Messier list, and no
-  comets, asteroids or satellites.
+  Hipparcos-2 solution keep a fixed J2000 position). There are no deep-sky objects beyond the Messier list.
+- **Satellites, comets, asteroids**: only from element sets the user supplies (no download). TLEs go stale within
+  days to weeks; comets and asteroids are two-body orbits without planetary perturbations, so they drift away from
+  the truth far from the element epoch. Satellite magnitudes are not estimated. The sky map shows at most 50 of
+  these objects.
+- **Observing sessions**: an interrupted item starts over when the session is resumed; items cannot be edited
+  (remove and add again). Start times are simulation time.
+- **Service worker** (offline app shell, installable PWA) needs a secure context (localhost or HTTPS); over plain
+  HTTP on a LAN only the manifest-based home-screen shortcut works.
+- **Gamepad**: only the browser's "standard" mapping is supported; some pads report other layouts.
 - **Observing planner**: ranks with a simple documented score (time above the altitude limit, peak altitude,
   brightness, object type). It ignores light pollution, surface brightness and the Moon's glare.
 - **Ephemeris**: DE421 covers 1900–2053.

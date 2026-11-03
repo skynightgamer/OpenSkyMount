@@ -27,6 +27,9 @@ receive and send intents. All devices see the same mount state because there is 
 | Layer | Module | Responsibility |
 |---|---|---|
 | Astronomy | `astro/engine.py`, `astro/catalog.py` | Time conversion (leap-second aware), target resolution, apparent topocentric Alt/Az with refraction, RA/Dec, rise/transit/set, magnitudes, field rotation, the ICRS→horizon matrix for the sky map |
+| Session | `mount/sequencer.py` | Observing-session queue on top of the controller: GoTo, track for a time, next; pauses on any other motion command (controller `command_serial`), skips refused targets; persisted in `state/queue.json` |
+| Orbits | `astro/orbits.py` | User-supplied TLE (SGP4) and MPC comet/minor-planet elements (two-body); `state/orbits.json`; resolved by the engine as `sat:`, `comet:`, `asteroid:` targets |
+| Recording | `server/recorder.py` | Telemetry JSONL files in `state/logs/` (5 Hz samples + events) for replay in the browser |
 | Control | `mount/controller.py` | State machine (idle, slewing, tracking, manual, homing, E-stop, fault, disconnected); GoTo with cable-wrap-aware azimuth choice; tracking with velocity feed-forward; backlash compensation; pointing model (sync offset and plate-solve corrections); safety checks |
 | Driver API | `mount/driver.py` | `MountDriver` ABC: `connect`, `capabilities`, `status`, `move_to(alt, az, rates)`, `set_rates`, `stop`, `emergency_stop`, `reset`, `home`, `sync_position`, `update` |
 | Simulation | `mount/axis.py`, `mount/sim_driver.py` | Deterministic per-axis motion (bounded velocity/acceleration, discrete-time braking, setpoint extrapolation), backlash, missed steps, limit switches, latency, encoder noise, tilt and zero-point errors, faults |
