@@ -155,6 +155,15 @@ class MountController:
         if self.mode == Mode.HOMING:
             raise CommandError("homing in progress")
 
+    @property
+    def sim_time(self) -> float:
+        """Simulation time of the last update (the time the reported position refers to)."""
+        return self._t
+
+    def pointing(self) -> tuple[float, float]:
+        """Estimated sky (alt, az) the payload points at, pointing model applied."""
+        return self._sky_from_mount(self.status_cache)
+
     def _sky_from_mount(self, st: DriverStatus) -> tuple[float, float]:
         """Best estimate of where the payload points (sky alt/az) from the mount's own sensors."""
         return self.model.mount_to_sky(*self._mount_reading(st))

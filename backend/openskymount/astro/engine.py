@@ -274,6 +274,31 @@ class AstronomyEngine:
             "distance_au": float("nan"),
         }
 
+    # ------------------------------------------- apparent place ("JNow") <-> ICRS
+    def icrs_to_apparent(self, ra_deg: float, dec_deg: float, unix: float, geocentric: bool = False) -> tuple[float, float]:
+        """Apparent RA/Dec of date (true equator and equinox; aberration, light deflection, precession and nutation
+        applied) of a fixed object at infinite distance. Topocentric unless ``geocentric``. This is ASCOM's
+        ``equTopocentric`` ("JNow") system. Degrees in and out."""
+        t = self.time(unix)
+        obs = self.earth if geocentric else self.site
+        star = Star(ra_hours=ra_deg / 15.0, dec_degrees=dec_deg)
+        ra, dec, _ = obs.at(t).observe(star).apparent().radec(epoch="date")
+        return float(ra.hours) * 15.0 % 360.0, float(dec.degrees)
+
+    def apparent_to_icrs(self, ra_deg: float, dec_deg: float, unix: float, geocentric: bool = False) -> tuple[float, float]:
+        """Inverse of :meth:`icrs_to_apparent`: the ICRS (J2000) direction whose apparent place of date is the given
+        RA/Dec. Solved by fixed-point iteration on the forward transformation (converges to < 1 mas in 3 steps)."""
+        t = self.time(unix)
+        want = _unit(ra_deg, dec_deg)
+        m = np.asarray(t.M)  # ICRS -> true equator and equinox of date
+        guess = m.T @ want  # precession-nutation only; aberration (~20") is corrected below
+        for _ in range(4):
+            ra_i, dec_i = _angles(guess)
+            got = _unit(*self.icrs_to_apparent(ra_i, dec_i, unix, geocentric))
+            guess = guess + m.T @ (want - got)
+            guess /= np.linalg.norm(guess)
+        return _angles(guess)
+
     def sun_altaz(self, unix: float | np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         return self.altaz(self.resolve("sun"), unix)
 
@@ -445,6 +470,18 @@ def _sky_state(sun_alt: float) -> str:
 
 def _unix_of(t: Time) -> float:
     return float(t.utc_datetime().timestamp())
+
+
+def _unit(ra_deg: float, dec_deg: float) -> np.ndarray:
+    ra, dec = math.radians(ra_deg), math.radians(dec_deg)
+    return np.array([math.cos(dec) * math.cos(ra), math.cos(dec) * math.sin(ra), math.sin(dec)])
+
+
+def _angles(v: np.ndarray) -> tuple[float, float]:
+    """Unit vector -> (RA in [0, 360), Dec) in degrees."""
+    ra = math.degrees(math.atan2(float(v[1]), float(v[0]))) % 360.0
+    dec = math.degrees(math.asin(max(-1.0, min(1.0, float(v[2]) / float(np.linalg.norm(v))))))
+    return ra, dec
 
 
 def _parse_pair(text: str) -> tuple[float, float]:

@@ -1,7 +1,8 @@
 """Optional password protection for LAN use.
 
 When a password is configured, every REST endpoint except a small allow-list and the WebSocket require either a
-session cookie (obtained from ``POST /api/login``) or an ``Authorization: Bearer <password>`` header (scripts).
+session cookie (obtained from ``POST /api/login``), an ``Authorization: Bearer <password>`` header (scripts) or HTTP
+Basic authentication with any user name (ASCOM Alpaca clients).
 Sessions live in memory, so a server restart logs everybody out.
 
 Limits (documented in docs/safety.md): plain HTTP, so the password crosses the LAN unencrypted. This keeps
@@ -10,6 +11,7 @@ casual users on the same network away from the controls; it is not protection ag
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
@@ -76,4 +78,12 @@ class Auth:
             return True
         if authorization and authorization.lower().startswith("bearer "):
             return self._password_ok(authorization[7:].strip())
+        if authorization and authorization.lower().startswith("basic "):
+            # HTTP Basic (ASCOM Alpaca clients): any user name, the password must match.
+            try:
+                decoded = base64.b64decode(authorization[6:].strip(), validate=True).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                return False
+            _, sep, pw = decoded.partition(":")
+            return bool(sep) and self._password_ok(pw)
         return False

@@ -19,6 +19,10 @@ def main() -> None:
     parser.add_argument("--password", default=os.environ.get("OPENSKYMOUNT_PASSWORD") or None,
                         help="require this password to open the UI (recommended with --host 0.0.0.0). "
                         "Prefer the OPENSKYMOUNT_PASSWORD environment variable: command lines are visible to other users")
+    parser.add_argument("--no-alpaca", action="store_true",
+                        help="do not serve the ASCOM Alpaca Telescope device (/api/v1/telescope/0) and discovery")
+    parser.add_argument("--no-alpaca-discovery", action="store_true",
+                        help="serve Alpaca but do not answer discovery broadcasts on UDP port 32227")
     args = parser.parse_args()
     if args.password is not None and len(args.password) < 6:
         parser.error("--password must have at least 6 characters")
@@ -30,7 +34,9 @@ def main() -> None:
 
     from .app import create_app
 
-    app = create_app(state_dir=Path(args.state_dir), driver=args.driver, password=args.password)
+    discovery = None if args.no_alpaca or args.no_alpaca_discovery else (args.host, args.port)
+    app = create_app(state_dir=Path(args.state_dir), driver=args.driver, password=args.password,
+                     alpaca=not args.no_alpaca, alpaca_discovery=discovery)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
