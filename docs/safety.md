@@ -20,7 +20,8 @@ Software is only one layer of protection. **A software emergency stop does not r
 |---|---|
 | Runaway after client loss | Manual slews need a refresh every 1 s (wall time). Control change or disconnect stops manual motion. The firmware watchdog stops the axes after 2 s without host traffic (OSM/1, tested with the fake firmware) |
 | Stale or duplicated commands | Per-session sequence numbers; a reconnect requires taking control again |
-| Conflicting operators | Single control authority with a lease; takeover needs explicit confirmation |
+| Conflicting operators | Single control authority with a lease; takeover needs explicit confirmation. ASCOM Alpaca clients join the same scheme: they take control only when it is free and never by force |
+| External programs (Alpaca) | Alpaca commands run through the same controller checks (solar exclusion, limits, faults, E-stop latch). `AbortSlew` is accepted from every client. Alpaca `MoveAxis` is not offered because it has no dead-man refresh |
 | Emergency | E-stop from any client, executed immediately with no command latency, latched until Reset |
 | Travel limits | Controller soft limits, then firmware soft limits (braking profile never passes them), then hard limit switches 2° beyond (fault and stop) |
 | Cable wrap | Multi-turn azimuth bounded to ±270°, automatic 360° unwind when tracking reaches the limit |

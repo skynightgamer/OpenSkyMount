@@ -155,6 +155,15 @@ class MountController:
         if self.mode == Mode.HOMING:
             raise CommandError("homing in progress")
 
+    @property
+    def sim_time(self) -> float:
+        """Simulation time of the last update (the time the reported position refers to)."""
+        return self._t
+
+    def pointing(self) -> tuple[float, float]:
+        """Estimated sky (alt, az) the payload points at, pointing model applied."""
+        return self._sky_from_mount(self.status_cache)
+
     def _sky_from_mount(self, st: DriverStatus) -> tuple[float, float]:
         """Best estimate of where the payload points (sky alt/az) from the mount's own sensors."""
         return self.model.mount_to_sky(*self._mount_reading(st))
@@ -170,6 +179,16 @@ class MountController:
             alt_m = st.alt.position - self._backlash_dir.alt * b_alt
             az_m = st.az.position - self._backlash_dir.az * b_az
         return alt_m, az_m
+
+    def _pick_az(self, az: float, current: float) -> float | None:
+        """Multi-turn azimuth command for a new GoTo. Prefers commands at least the backlash compensation away from
+        the cable-wrap limits: the compensation is added to the motor command, so a target exactly at a limit would be
+        commanded beyond it, the driver would clamp the motor and the slew would never settle. Falls back to the
+        full range (only matters when the limits span exactly 360°)."""
+        m = self.config.sim.backlash_az / 2 if self.config.control.backlash_compensation else 0.0
+        lim = self.limits
+        best = nearest_unwrapped(az, current, lim.az_min + m, lim.az_max - m)
+        return best if best is not None else nearest_unwrapped(az, current, lim.az_min, lim.az_max)
 
     def _sun_separation_at(self, alt: float, az: float, t: float) -> float:
         s_alt, s_az = self.engine.sun_altaz(t)
@@ -206,7 +225,7 @@ class MountController:
             self._check_path_avoids_sun(alt, az)
         st = self.driver.status()
         _, m_az = self.model.sky_to_mount(alt, az)
-        az_cmd = nearest_unwrapped(m_az, st.az.position, self.limits.az_min, self.limits.az_max)
+        az_cmd = self._pick_az(m_az, st.az.position)
         if az_cmd is None:
             raise CommandError("azimuth not reachable within cable-wrap limits")
         self.target = target
@@ -397,7 +416,7 @@ class MountController:
                 self.log(f"{self.target.name} is below the horizon at the new time; tracking stopped", "warning")
             else:
                 _, m_az = self.model.sky_to_mount(alt, az)
-                self._az_cmd = nearest_unwrapped(m_az, st.az.position, self.limits.az_min, self.limits.az_max)
+                self._az_cmd = self._pick_az(m_az, st.az.position)
         self._status = self.driver.status()
 
     def _control_step(self, t: float, wall: float) -> None:
@@ -498,7 +517,7 @@ class MountController:
             self.flags.discard("out_of_reach")
         # Multi-turn azimuth with cable-wrap limits.
         if self._az_cmd is None:
-            self._az_cmd = nearest_unwrapped(az_m, st.az.position, lim.az_min, lim.az_max) or 0.0
+            self._az_cmd = self._pick_az(az_m, st.az.position) or 0.0
         az_cmd = self._az_cmd + wrap180(az_m - self._az_cmd)
         if not lim.az_min <= az_cmd <= lim.az_max:
             alt_cand = az_cmd - 360.0 if az_cmd > lim.az_max else az_cmd + 360.0

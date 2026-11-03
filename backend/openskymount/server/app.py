@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from ..config import PAYLOADS, AppConfig
 from ..mount.controller import CommandError, MountController
 from ..mount.driver import MountDriver
 from ..mount.sim_driver import INJECTABLE_FAULTS, SimulatedMountDriver
+from .alpaca import AlpacaTelescope, register_alpaca, start_discovery, unique_id_for
 from .auth import COOKIE, OPEN_PATHS, Auth, RateLimited
 from .sessions import SessionManager
 
@@ -71,6 +73,8 @@ class Observatory:
         self.sessions = SessionManager(self.config.control.control_lease_s)
         self._task: asyncio.Task[None] | None = None
         self.started = time.time()
+        # Called about once per second with the wall time (e.g. to drop idle Alpaca clients).
+        self.housekeeping: list[Callable[[float], None]] = []
 
     # ------------------------------------------------------------ main loop
     def tick(self) -> None:
@@ -87,6 +91,8 @@ class Observatory:
                     self.broadcast(self.state_message())
                 if n % 20 == 0:
                     self._expire_control()
+                    for hook in self.housekeeping:
+                        hook(time.time())
             except Exception:  # pragma: no cover - keep the loop alive, log loudly
                 log.exception("control loop error")
             await asyncio.sleep(max(0.0, TICK_S - (time.perf_counter() - t0)))
@@ -290,10 +296,17 @@ def create_app(
     state_dir: Path | None = None,
     driver: str | None = None,
     password: str | None = None,
+    alpaca: bool = True,
+    alpaca_discovery: tuple[str, int] | None = None,
 ) -> FastAPI:
-    """``password``: require a login for the UI and API (``None`` = open, the default for localhost use)."""
+    """``password``: require a login for the UI and API (``None`` = open, the default for localhost use).
+
+    ``alpaca``: serve the ASCOM Alpaca Telescope device and management API. ``alpaca_discovery``: (bind host, HTTP
+    port) to answer Alpaca UDP discovery broadcasts on port 32227 (``None``: no discovery responder).
+    """
     obs_holder: dict[str, Observatory] = {}
     auth = Auth(password or None)
+    alpaca_dev: AlpacaTelescope | None = None
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
@@ -303,10 +316,17 @@ def create_app(
         )
         obs_holder["o"] = o
         app.state.observatory = o
+        discovery = None
+        if alpaca_dev is not None:
+            o.housekeeping.append(alpaca_dev.purge)
+            if alpaca_discovery is not None:
+                discovery = await start_discovery(*alpaca_discovery)
         o.start()
         try:
             yield
         finally:
+            if discovery is not None:
+                discovery.close()
             await o.stop()
 
     app = FastAPI(title="OpenSkyMount", version=__version__, lifespan=lifespan)
@@ -463,6 +483,12 @@ def create_app(
                 o._on_controller_change("controller disconnected")
             else:
                 o.broadcast({"type": "control", **o.sessions.describe(time.time())})
+
+    if alpaca:
+        sd = observatory.state_dir if observatory else (
+            state_dir if state_dir is not None else Path(os.environ.get("OPENSKYMOUNT_STATE", "state")))
+        alpaca_dev = register_alpaca(app, obsv, unique_id_for(str(Path(sd).resolve()) if sd else None))
+        app.state.alpaca = alpaca_dev
 
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="ui")

@@ -257,3 +257,26 @@ def test_field_rotation_matches_parallactic_angle_derivative(engine: AstronomyEn
         assert abs(numeric + formula) < 0.02 * abs(formula) + 2e-6, (name, numeric, formula)
         checked += 1
     assert checked >= 3
+
+
+def test_apparent_place_inverse_meeus_23a(engine: AstronomyEngine) -> None:
+    """ASCOM "JNow" -> J2000: inverting Meeus 23.a's apparent place of θ Per recovers its catalog position moved by
+    its proper motion (the inverse treats the object as fixed, so proper motion stays in the result)."""
+    t = engine.ts.tt(2028, 11, 13.19)
+    unix = float(t.utc_datetime().timestamp())
+    ra, dec = engine.apparent_to_icrs(hms(2, 46, 14.390), dms(49, 21, 7.45), unix, geocentric=True)
+    years = (t.tt - 2451545.0) / 365.25
+    exp_ra = hms(2, 44, 11.986) + 0.03425 * years * 15.0 / 3600.0
+    exp_dec = dms(49, 13, 42.48) - 0.0895 * years / 3600.0
+    assert abs(ra - exp_ra) * math.cos(math.radians(exp_dec)) < 1.5 * ARCSEC
+    assert abs(dec - exp_dec) < 1.5 * ARCSEC
+
+
+@pytest.mark.parametrize("ra,dec", [(0.0, 0.0), (101.3, -16.7), (279.2, 38.8), (45.0, 89.95), (200.0, -89.9)])
+def test_apparent_place_round_trip(engine: AstronomyEngine, ra: float, dec: float) -> None:
+    unix = dt.datetime(2026, 11, 1, 22, 0, tzinfo=dt.UTC).timestamp()
+    app = engine.icrs_to_apparent(ra, dec, unix)
+    back = engine.apparent_to_icrs(*app, unix)
+    assert separation(back[1], back[0], dec, ra) < 0.001 * ARCSEC  # (lat, lon) form: Dec, RA
+    # Precession since J2000 moves the apparent place by roughly 50"/yr * 26.8 yr plus aberration.
+    assert 0.0 < separation(app[1], app[0], dec, ra) < 0.6

@@ -72,3 +72,26 @@ def test_crosscheck_astropy(astropy_env, lat: float, lon: float, when: dt.dateti
     assert checked == 9
 
 
+
+
+@pytest.mark.parametrize("ra,dec", [(279.23, 38.78), (101.29, -16.72), (37.95, 89.26), (10.0, -60.0)])
+def test_jnow_matches_astropy_tete(astropy_env, ra: float, dec: float) -> None:
+    """ASCOM equTopocentric ("JNow"): our apparent place of date vs Astropy's TETE frame (topocentric)."""
+    import warnings
+
+    from astropy import units as u
+    from astropy.coordinates import TETE, EarthLocation, SkyCoord
+    from astropy.time import Time
+
+    when = dt.datetime(2024, 1, 15, 22, 0, tzinfo=dt.UTC)
+    obs = ObserverConfig(latitude=52.52, longitude=13.405, elevation_m=35.0)
+    eng = AstronomyEngine(obs)
+    loc = EarthLocation(lat=obs.latitude * u.deg, lon=obs.longitude * u.deg, height=obs.elevation_m * u.m)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs").transform_to(
+            TETE(obstime=Time(when), location=loc))
+    got = eng.icrs_to_apparent(ra, dec, when.timestamp())
+    assert separation(got[1], got[0], ref.dec.deg, ref.ra.deg) < 0.5 * ARCSEC
+    back = eng.apparent_to_icrs(ref.ra.deg, ref.dec.deg, when.timestamp())
+    assert separation(back[1], back[0], dec, ra) < 0.5 * ARCSEC

@@ -64,6 +64,20 @@ def test_polaris_azimuth_wrap_does_not_spin(make_rig) -> None:
         assert snap["true_pointing_error"] < rig.cfg.control.tracking_tolerance_deg
 
 
+def test_goto_to_the_cable_wrap_limit_settles(make_rig) -> None:
+    """Regression: from az 90 the nearest multi-turn command for az 270 was exactly the +270° limit; backlash
+    compensation then put the motor command beyond it, the driver clamped it and the slew never finished."""
+    rig = make_rig(AppConfig())
+    rig.ctl.goto("altaz:30,90")
+    assert rig.run(60)["mode"] == Mode.IDLE
+    rig.ctl.goto("altaz:-3,270")
+    snap = rig.run(120)
+    assert snap["mode"] == Mode.IDLE
+    assert snap["true_pointing_error"] < 0.01
+    lo, hi = rig.cfg.limits.az_min, rig.cfg.limits.az_max
+    assert lo < snap["position"]["az_axis"] < hi
+
+
 def test_cable_wrap_unwind(make_rig) -> None:
     cfg = AppConfig(limits=MountLimits(az_min=-180.0, az_max=180.0))
     # A southern star transiting the meridian (az 180) forces an unwind with these limits.
