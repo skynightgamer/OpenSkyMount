@@ -1,0 +1,20 @@
+{
+  "name": "OpenSkyMount",
+  "short_name": "SkyMount",
+  "description": "Control software and simulator for a motorized alt-az mount",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17191c",
+  "theme_color": "#17191c",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Hand controller", "short_name": "Hand", "url": "/?view=hand", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ]
+}

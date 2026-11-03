@@ -10,11 +10,28 @@ import {
   Telemetry,
 } from "./components/Panels";
 import { AlignmentPanel } from "./components/Planner";
+import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
+import { useGamepad } from "./gamepad";
 import MountView from "./mount/MountView";
 import SkyMap, { type Layers } from "./sky/SkyMap";
-import { estopHttp, login, logout, toast, useStore } from "./store";
+import { MANUAL_SPEEDS, estopHttp, isController, login, logout, toast, useStore } from "./store";
 
-type Tab = "sky" | "mount" | "control";
+type Tab = "sky" | "mount" | "control" | "hand";
+const TABS: Tab[] = ["sky", "mount", "control", "hand"];
+const TAB_LABEL: Record<Tab, string> = { sky: "Sky", mount: "Mount", control: "Control", hand: "Hand" };
+
+/** Initial view: ?view=hand (home-screen shortcut) or the last view used on this device. */
+function initialTab(): Tab {
+  const q = new URLSearchParams(location.search).get("view");
+  if (q && (TABS as string[]).includes(q)) return q as Tab;
+  try {
+    const t = localStorage.getItem("osm-tab");
+    if (t && (TABS as string[]).includes(t)) return t as Tab;
+  } catch {
+    /* no storage */
+  }
+  return "sky";
+}
 const LAYER_LABEL: Record<keyof Layers, string> = {
   constellations: "Constellations",
   labels: "Labels",
@@ -78,7 +95,17 @@ export default function App() {
 }
 
 function Main() {
-  const [tab, setTab] = useState<Tab>("sky");
+  const [tab, setTabState] = useState<Tab>(initialTab);
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    try {
+      localStorage.setItem("osm-tab", t);
+    } catch {
+      /* per-device preference only */
+    }
+  };
+  const canMove = useStore((s) => isController(s) && !!s.mount && !["emergency_stop", "fault", "disconnected"].includes(s.mount.mode));
+  useGamepad(canMove, MANUAL_SPEEDS);
   const [settings, setSettings] = useState(false);
   const [follow, setFollow] = useState(false);
   const [layers, setLayers] = useState<Layers>({ constellations: true, labels: true, altaz: true, equatorial: false, dsos: true });
@@ -115,6 +142,9 @@ function Main() {
         </div>
         <div className={`conn conn-${conn}`}>{conn === "open" ? (caps?.simulated ? "Simulator connected" : caps?.name) : conn}
           {conn === "open" && latency != null && <span className="latency">{latency.toFixed(0)} ms</span>}</div>
+        <button className={`hand-toggle${tab === "hand" ? " sel" : ""}`} onClick={() => setTab(tab === "hand" ? "sky" : "hand")} aria-pressed={tab === "hand"} title="Large hand-controller layout (for phones)">
+          Hand controller
+        </button>
         <button className={night ? "sel" : ""} onClick={() => setNight(!night)} aria-pressed={night} title="Red light for use at the telescope">
           Red light
         </button>
@@ -124,9 +154,9 @@ function Main() {
         {authEnabled && <button onClick={() => void logout()}>Log out</button>}
       </header>
       <nav className="tabs" role="tablist">
-        {(["sky", "mount", "control"] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "sel" : ""} onClick={() => setTab(t)}>
-            {t === "sky" ? "Sky" : t === "mount" ? "Mount" : "Control"}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </nav>
@@ -153,10 +183,14 @@ function Main() {
           <ControlAuthority />
           <TargetPanel />
           <MotionPanel />
+          <SessionPanel />
           <AlignmentPanel />
           <ClockPanel />
+          <OrbitsPanel />
+          <LogsPanel />
           <EventLog />
         </section>
+        <section className="col hand-col">{tab === "hand" && <HandController />}</section>
       </main>
       <Telemetry />
       {settings && <SettingsPanel onClose={() => setSettings(false)} />}

@@ -116,6 +116,9 @@ export interface Layers {
   dsos: boolean;
 }
 
+// User-supplied objects (orbital elements): drawn smaller, coloured by kind.
+const KIND_COLORS: Record<string, string> = { satellite: "#9fdcff", comet: "#a8f0c0", asteroid: "#d8c8a8" };
+
 const BODY_COLORS: Record<string, string> = {
   Sun: "#ffd25e",
   Moon: "#e9ecf5",
@@ -145,6 +148,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
   const followRef = useRef(followMount);
   const [hover, setHover] = useState<string | null>(null);
   const observer = useStore((s) => s.config?.config.observer);
+  const orbitsRev = useStore((s) => s.orbitsRevision);
   layersRef.current = layers;
   followRef.current = followMount;
 
@@ -175,14 +179,16 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
       if (stop) return;
       const fr = frameRef.current;
       const rate = getState().clock?.rate ?? 1;
-      // Earth rotation is extrapolated client-side; refresh planets / precise matrix regularly.
-      if (!fr || Math.abs(simNow() - fr.fetchedAt) > Math.max(20, rate * 2)) refresh();
+      // Earth rotation is extrapolated client-side; refresh planets / precise matrix regularly, and often while a
+      // satellite (about 1°/s) is above the horizon.
+      const fast = !!fr?.f.bodies.some((b) => b.kind === "satellite");
+      if (!fr || Math.abs(simNow() - fr.fetchedAt) > (fast ? Math.max(1, rate) : Math.max(20, rate * 2))) refresh();
     }, 500);
     return () => {
       stop = true;
       clearInterval(id);
     };
-  }, [observer?.latitude, observer?.longitude, observer?.elevation_m]);
+  }, [observer?.latitude, observer?.longitude, observer?.elevation_m, orbitsRev]);
 
   // Render loop.
   useEffect(() => {
@@ -498,8 +504,9 @@ function render(
       const p = project(b, mulMV(m, radecToVec(body.ra_j2000, body.dec_j2000)), 0);
       if (!p) continue;
       const big = body.kind === "sun" || body.kind === "moon";
-      const r = big ? Math.max(5, (0.26 * b.scale * Math.PI) / 180 * 2) : 3.5;
-      ctx.fillStyle = BODY_COLORS[body.name] ?? "#fff";
+      const user = body.kind in KIND_COLORS;
+      const r = big ? Math.max(5, (0.26 * b.scale * Math.PI) / 180 * 2) : user ? 2.5 : 3.5;
+      ctx.fillStyle = BODY_COLORS[body.name] ?? KIND_COLORS[body.kind] ?? "#fff";
       ctx.beginPath();
       ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
       ctx.fill();

@@ -474,6 +474,11 @@ class AstronomyEngine:
         phi2 = math.exp(-1.87 * tan_half**1.22)
         return el.mag1 + 5 * math.log10(r * delta) - 2.5 * math.log10((1 - g) * phi1 + g * phi2)
 
+    def elements_age_days(self, target: Target, unix: float) -> float | None:
+        """Days between ``unix`` and the TLE epoch of a satellite target (None for other targets)."""
+        el = self.orbits.get(target.id) if target.kind == "satellite" else None
+        return (unix - el.epoch_unix) / 86400.0 if isinstance(el, SatelliteElements) else None
+
     def satellite_passes(self, target: Target, unix: float, hours: float = 24.0, min_alt: float = 10.0,
                          limit: int = 10) -> list[dict[str, Any]]:
         """Passes above ``min_alt`` within ``hours``: rise, culmination (time, altitude), set, and whether the
@@ -542,9 +547,8 @@ class AstronomyEngine:
             info.update(self.moon_phase(unix))
         if target.kind == "satellite":
             sat = self._skyfield_body(target)
-            el = self.orbits.get(target.id)
             info["sunlit"] = bool(sat.at(self.time(unix)).is_sunlit(self.eph))
-            info["elements_age_days"] = (unix - el.epoch_unix) / 86400.0 if isinstance(el, SatelliteElements) else None
+            info["elements_age_days"] = self.elements_age_days(target, unix)
         if target.kind in ("comet", "asteroid"):
             info["elements"] = "two-body orbit from MPC elements (J2000 ecliptic), perturbations ignored"
         if with_events:
@@ -611,7 +615,8 @@ class AstronomyEngine:
             try:
                 obs = self.apparent(target, t)
                 alt, az, dist = obs.altaz(**refr)
-                if target.kind == "satellite" and alt.degrees < 0:
+                if not (math.isfinite(alt.degrees) and math.isfinite(az.degrees)) or (
+                        target.kind == "satellite" and alt.degrees < 0):
                     continue
                 ra, dec, _ = obs.radec() if target.kind == "satellite" else site_at.observe(
                     self._skyfield_body(target)).radec()

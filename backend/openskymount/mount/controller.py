@@ -242,6 +242,8 @@ class MountController:
         if target.is_sun and not self._solar_policy_allows():
             raise CommandError("automatic slewing to the Sun is disabled (solar safety); see docs/safety.md")
         alt, az, _, _ = self.engine.altaz_rates(target, self._t)
+        if not (math.isfinite(alt) and math.isfinite(az)):
+            raise CommandError(f"no valid position for {target.name} (orbital elements unusable at this time?)")
         if alt < ctl.min_target_altitude and target.kind != "altaz":
             raise CommandError(f"{target.name} is below the altitude limit ({alt:.1f}° < {ctl.min_target_altitude:.1f}°)")
         if target.kind == "altaz" and not (self.limits.min_altitude <= alt <= self.limits.max_altitude):
@@ -272,6 +274,9 @@ class MountController:
         self._settle = 0
         self.flags.clear()
         self.log(f"GoTo {target.name} (alt {alt:.2f}°, az {az:.2f}°)")
+        age = self.engine.elements_age_days(target, self._t)
+        if age is not None and abs(age) > 14.0:
+            self.log(f"TLE of {target.name} is {abs(age):.0f} days from its epoch: the prediction may be far off", "warning")
         return {"ok": True, "message": f"Slewing to {target.name}"}
 
     def _check_path_avoids_sun(self, alt: float, az: float) -> None:
@@ -535,6 +540,11 @@ class MountController:
         ctl = self.config.control
         lim = self.limits
         alt, az, ar, zr = self.track.at(t)
+        if not all(math.isfinite(x) for x in (alt, az, ar, zr)):
+            self.driver.stop()
+            self.mode = Mode.IDLE
+            self.log(f"No valid position for {self.target.name}; tracking stopped", "warning")
+            return
         self.last_target_pos = (alt, az, ar, zr)
         if self.target.kind != "altaz" and alt < ctl.min_target_altitude:
             self.driver.stop()
