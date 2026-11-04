@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-03 (session 6)._ Main branch: `main`. Session 6 work is on `claude/observing-sessions-target-queue-n9s0w1` (not merged).
+_Last updated: 2026-11-04 (session 6)._ Main branch: `main` (session 6 work merged from `claude/observing-sessions-target-queue-n9s0w1`).
 
 ## Milestones
 
