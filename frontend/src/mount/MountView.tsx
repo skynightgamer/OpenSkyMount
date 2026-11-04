@@ -415,7 +415,7 @@ function cradle(M: Mats, g: THREE.Group, depth: number, zLen: number, saddle = t
 }
 
 // ------------------------------------------------------------------ smartphone
-const PHONE = { w: 0.0716, h: 0.1476, t: 0.0079, r: 0.0105 }; // a typical 6.1" phone (illustrative)
+const PHONE = { w: 0.0776, h: 0.163, t: 0.00825, r: 0.0118 }; // a large 6.9" phone (illustrative)
 
 /** Flat rounded-rectangle panel in the xy plane with UVs normalised to its bounding box. */
 function panel(w: number, h: number, r: number): THREE.ShapeGeometry {
@@ -527,6 +527,7 @@ function phoneScreenTexture(): THREE.CanvasTexture {
  */
 function buildPhone(M: Mats, g: THREE.Group) {
   const { w, h, t, r } = PHONE;
+  const k = h / 0.1476; // in-plane details below were laid out for a 147.6 mm phone
   const frame = new THREE.MeshStandardMaterial({ color: 0xa9a59c, metalness: 0.92, roughness: 0.3 });
   const backGlass = new THREE.MeshPhysicalMaterial({ color: 0xc4bfb5, metalness: 0.05, roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.6 });
   const plateauMat = new THREE.MeshPhysicalMaterial({ color: 0xc9c4ba, metalness: 0.05, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08 });
@@ -545,11 +546,11 @@ function buildPhone(M: Mats, g: THREE.Group) {
   const pad = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.95 });
 
   // Main lens position on the phone (phone coordinates); the phone is shifted so it lands on the axis.
-  const mod = { x: w / 2 - 0.0042 - 0.0195, y: h / 2 - 0.0042 - 0.0195, s: 0.039 };
+  const mod = { x: w / 2 - k * (0.0042 + 0.0195), y: h / 2 - k * (0.0042 + 0.0195), s: k * 0.039 };
   const lenses: [number, number][] = [
-    [mod.x + 0.0088, mod.y + 0.0088], // main (1×), on the axis
-    [mod.x + 0.0088, mod.y - 0.0088], // ultra-wide
-    [mod.x - 0.0082, mod.y], // telephoto
+    [mod.x + k * 0.0088, mod.y + k * 0.0088], // main (1×), on the axis
+    [mod.x + k * 0.0088, mod.y - k * 0.0088], // ultra-wide
+    [mod.x - k * 0.0082, mod.y], // telephoto
   ];
   const phone = new THREE.Group();
   phone.position.set(-lenses[0][0], -lenses[0][1], 0);
@@ -576,7 +577,7 @@ function buildPhone(M: Mats, g: THREE.Group) {
   scr.emissiveIntensity = 0.85;
   const screen = mesh(panel(w - 0.0044, h - 0.0044, r - 0.0022), scr, phone, 0, 0, t / 2 + 0.0001);
   screen.name = "screen";
-  const island = mesh(new RoundedBoxGeometry(0.0125, 0.0036, 0.0002, 2, 0.0009), frontGlass, phone, 0, h / 2 - 0.0078, t / 2 + 0.0002);
+  const island = mesh(new RoundedBoxGeometry(0.0125 * k, 0.0036 * k, 0.0002, 2, 0.0009), frontGlass, phone, 0, h / 2 - 0.0078 * k, t / 2 + 0.0002);
   island.name = "island";
 
   // Camera plateau with three lenses, flash, LiDAR and microphone.
@@ -589,31 +590,31 @@ function buildPhone(M: Mats, g: THREE.Group) {
     return c;
   };
   for (const [x, y] of lenses) {
-    disc(0.0071, 0.0016, frame, x, y, zBack); // raised ring
-    disc(0.0062, 0.0017, ink, x, y, zBack);
-    const gl = mesh(new THREE.CircleGeometry(0.0049, 40), lensGlass, phone, x, y, zBack - 0.00172);
+    disc(0.0071 * k, 0.0016, frame, x, y, zBack); // raised ring
+    disc(0.0062 * k, 0.0017, ink, x, y, zBack);
+    const gl = mesh(new THREE.CircleGeometry(0.0049 * k, 40), lensGlass, phone, x, y, zBack - 0.00172);
     gl.rotation.y = Math.PI; // face -z
-    const ap = mesh(new THREE.CircleGeometry(0.0019, 24), ink, phone, x, y, zBack - 0.00175);
+    const ap = mesh(new THREE.CircleGeometry(0.0019 * k, 24), ink, phone, x, y, zBack - 0.00175);
     ap.rotation.y = Math.PI;
   }
-  const flash = mesh(new THREE.CircleGeometry(0.0028, 24), new THREE.MeshStandardMaterial({ color: 0xf2ead2, roughness: 0.35 }), phone, mod.x - 0.0082, mod.y + 0.0118, zBack - 0.00005);
+  const flash = mesh(new THREE.CircleGeometry(0.0028 * k, 24), new THREE.MeshStandardMaterial({ color: 0xf2ead2, roughness: 0.35 }), phone, mod.x - k * 0.0082, mod.y + k * 0.0118, zBack - 0.00005);
   flash.rotation.y = Math.PI;
-  const lidar = mesh(new THREE.CircleGeometry(0.0026, 24), ink, phone, mod.x - 0.0082, mod.y - 0.0118, zBack - 0.00005);
+  const lidar = mesh(new THREE.CircleGeometry(0.0026 * k, 24), ink, phone, mod.x - k * 0.0082, mod.y - k * 0.0118, zBack - 0.00005);
   lidar.rotation.y = Math.PI;
   const mic = mesh(new THREE.CircleGeometry(0.0006, 12), ink, phone, mod.x - 0.0006, mod.y + 0.0004, zBack - 0.00005);
   mic.rotation.y = Math.PI;
 
   // Side buttons, USB-C port, speaker holes, antenna bands.
   const btn = (x: number, y: number, len: number) => mesh(new RoundedBoxGeometry(0.0016, len, 0.0034, 2, 0.0006), frame, phone, x, y, 0);
-  btn(w / 2 + 0.0002, 0.024, 0.017); // side button
-  btn(-w / 2 - 0.0002, 0.047, 0.0065); // action button
-  btn(-w / 2 - 0.0002, 0.033, 0.0095); // volume up
-  btn(-w / 2 - 0.0002, 0.0205, 0.0095); // volume down
+  btn(w / 2 + 0.0002, 0.024 * k, 0.017 * k); // side button
+  btn(-w / 2 - 0.0002, 0.047 * k, 0.0065 * k); // action button
+  btn(-w / 2 - 0.0002, 0.033 * k, 0.0095 * k); // volume up
+  btn(-w / 2 - 0.0002, 0.0205 * k, 0.0095 * k); // volume down
   mesh(new RoundedBoxGeometry(0.0089, 0.0012, 0.0031, 2, 0.0005), ink, phone, 0, -h / 2 - 0.0001, 0);
   for (const sx of [-1, 1])
     for (let i = 0; i < 5; i++) mesh(new THREE.CylinderGeometry(0.00055, 0.00055, 0.0004, 10), ink, phone, sx * (0.0085 + i * 0.0021), -h / 2 - 0.0001, 0);
   const plastic = new THREE.MeshStandardMaterial({ color: 0x8f8b84, roughness: 0.7 });
-  for (const sx of [-1, 1]) for (const y of [0.058, -0.062]) mesh(new THREE.BoxGeometry(0.0006, 0.0012, t * 0.62), plastic, phone, sx * (w / 2 + 0.00005), y, 0);
+  for (const sx of [-1, 1]) for (const y of [0.058 * k, -0.062 * k]) mesh(new THREE.BoxGeometry(0.0006, 0.0012, t * 0.62), plastic, phone, sx * (w / 2 + 0.00005), y, 0);
   for (const y of [h / 2, -h / 2]) mesh(new THREE.BoxGeometry(0.0012, 0.0006, t * 0.62), plastic, phone, y > 0 ? -0.018 : 0.02, y + Math.sign(y) * 0.00005, 0);
 
   // Spring clamp: centre body with two guide rods and sliding jaws (rubber pads, lips over the front edge).

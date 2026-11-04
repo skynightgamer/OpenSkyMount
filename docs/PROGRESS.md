@@ -104,4 +104,5 @@ _Last updated: 2026-11-04 (session 6)._ Main branch: `main` (session 6 work merg
   118 backend tests (8 skipped, optional extras not installed), 33 frontend unit tests and all three browser E2E
   scripts pass. Measured ~8 ms of script time per frame while panning the phone-size sky map (headless Chromium).
   **Not verified**: frame rate on a real phone.
-
+  Follow-up: phone enlarged to the largest current class (6.9″, 163 × 77.6 × 8.25 mm); camera plateau, lenses and
+  buttons scale with it.
