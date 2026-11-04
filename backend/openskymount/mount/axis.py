@@ -108,10 +108,13 @@ class AxisSim:
         return a * dt * (math.sqrt(0.25 + 2.0 * distance / (a * dt * dt)) - 0.5)
 
     def step(self, dt: float) -> None:
+        # The control law compares the setpoint and the counter at the same instant (the start of the step).
+        # Extrapolating the setpoint first made the axis lead a moving target by velocity x dt (about 40" for a
+        # satellite at 0.5°/s with 20 ms steps; ~1" for sidereal tracking).
+        v_des = self._desired_velocity(dt)
         if self.mode == self.POSITION and self.ff:
             # A setpoint is (position, rate): extrapolate it until the next command arrives.
             self.target += self.ff * dt
-        v_des = self._desired_velocity(dt)
         dv_max = self.p.max_accel * dt
         v_new = self.vel + max(-dv_max, min(dv_max, v_des - self.vel))
         dx = 0.5 * (self.vel + v_new) * dt

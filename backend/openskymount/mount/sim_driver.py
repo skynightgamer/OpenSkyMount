@@ -57,6 +57,10 @@ class SimulatedMountDriver(MountDriver):
             soft_max=hi,
         )
 
+    @property
+    def command_latency(self) -> float:
+        return self.sim.command_latency_s
+
     def reconfigure(self, limits: MountLimits, sim: SimulationConfig) -> None:
         """Apply new limits / imperfections without resetting the axis positions."""
         self.limits = limits

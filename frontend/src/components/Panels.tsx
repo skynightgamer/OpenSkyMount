@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, timeZones, toZonedInput, zoneLabel } from "../format";
 import { ExposurePlanner, TonightList } from "./Planner";
+import { SatellitePasses } from "./Session";
 import {
+  MANUAL_SPEEDS,
   command,
   getState,
   isController,
@@ -9,6 +11,7 @@ import {
   requestControl,
   select,
   setPrefs,
+  setState,
   simNow,
   toast,
   useStore,
@@ -110,11 +113,14 @@ interface Info {
   events?: { rise: number | null; set: number | null; transit: number | null; circumpolar?: boolean; never_rises?: boolean };
   notes: string[];
   illuminated?: number;
+  sunlit?: boolean;
+  elements_age_days?: number | null;
 }
 
 export function TargetPanel() {
   const selected = useStore((s) => s.selectedId);
   const epoch = useStore((s) => s.clock?.epoch);
+  const orbitsRev = useStore((s) => s.orbitsRevision);
   const site = useStore((s) => s.config?.config.observer);
   const prefs = useStore((s) => s.prefs);
   const [info, setInfo] = useState<Info | null>(null);
@@ -133,12 +139,13 @@ export function TargetPanel() {
         .then((d) => !stop && setInfo(d))
         .catch((e) => !stop && setErr(String(e.message ?? e)));
     load();
-    const id = setInterval(load, 4000);
+    // Satellites move about 1° per second: refresh their numbers more often.
+    const id = setInterval(load, selected.startsWith("sat:") ? 1000 : 4000);
     return () => {
       stop = true;
       clearInterval(id);
     };
-  }, [selected, epoch, site?.latitude, site?.longitude]);
+  }, [selected, epoch, orbitsRev, site?.latitude, site?.longitude]);
 
   const empty = (text: string) => (
     <section className="panel target empty">
@@ -164,6 +171,8 @@ export function TargetPanel() {
         {info.constellation ? ` · ${info.constellation}` : ""}
         {info.magnitude != null ? ` · mag ${info.magnitude.toFixed(1)}` : ""}
         {info.illuminated != null ? ` · ${(info.illuminated * 100).toFixed(0)}% lit` : ""}
+        {info.sunlit != null ? ` · ${info.sunlit ? "sunlit" : "in Earth's shadow"}` : ""}
+        {info.elements_age_days != null ? ` · TLE ${info.elements_age_days.toFixed(1)} d old` : ""}
       </div>
       <dl className="grid2">
         <dt>RA (J2000)</dt>
@@ -200,16 +209,17 @@ export function TargetPanel() {
           ))}
         </ul>
       )}
-      <GotoButtons id={info.id} disabled={!info.above_horizon || info.kind === "sun"} />
-      {info.kind !== "altaz" && <ExposurePlanner rate={info.above_horizon ? info.field_rotation_rate : null} dec={info.dec_date} />}
+      <GotoButtons id={info.id} disabled={!info.above_horizon || info.kind === "sun"} canQueue={info.kind !== "sun"} />
+      {info.kind === "satellite" && <SatellitePasses id={info.id} />}
+      {info.kind !== "altaz" && info.kind !== "satellite" && <ExposurePlanner rate={info.above_horizon ? info.field_rotation_rate : null} dec={info.dec_date} />}
     </section>
   );
 }
 
-function GotoButtons({ id, disabled }: { id: string; disabled: boolean }) {
+function GotoButtons({ id, disabled, canQueue }: { id: string; disabled: boolean; canQueue: boolean }) {
   const ctl = useStore((s) => isController(s));
   return (
-    <div className="row">
+    <div className="row wrap-narrow">
       <button className="primary" disabled={!ctl || disabled} onClick={() => command("goto", { target: id, track: true })}>
         GoTo &amp; track
       </button>
@@ -218,6 +228,13 @@ function GotoButtons({ id, disabled }: { id: string; disabled: boolean }) {
       </button>
       <button disabled={!ctl} onClick={() => command("sync", { target: id }).then((a) => a.ok && toast(String(a.message)))} title="The payload is centred on this object: add it as an alignment point">
         Sync
+      </button>
+      <button
+        disabled={!ctl || !canQueue}
+        onClick={() => command("queue_add", { target: id, duration_s: 600 }).then((a) => a.ok && toast(String(a.message)))}
+        title="Add to the observing session (tracks 10 minutes; edit the session in the Session panel)"
+      >
+        + Session
       </button>
     </div>
   );
@@ -265,7 +282,8 @@ export function MotionPanel() {
   const hasTarget = useStore((s) => !!s.mount?.target && s.mount.target.kind !== "altaz");
   const faults = useStore((s) => s.mount?.driver.faults ?? EMPTY);
   const maxRate = useStore((s) => s.mount?.limits.max_rate ?? 5);
-  const [speed, setSpeed] = useState(1);
+  const speed = useStore((s) => s.manualSpeed);
+  const pad = useStore((s) => s.gamepad);
   const latched = mode === "emergency_stop" || mode === "fault" || mode === "disconnected";
   return (
     <section className="panel motion">
@@ -297,17 +315,22 @@ export function MotionPanel() {
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} />
       <div className="speed" role="radiogroup" aria-label="Manual speed">
         <span>Rate</span>
-        {[0.05, 0.5, 2, 5].map((s) => (
-          <button key={s} className={speed === s ? "sel" : ""} onClick={() => setSpeed(s)} aria-pressed={speed === s}>
+        {MANUAL_SPEEDS.map((s) => (
+          <button key={s} className={speed === s ? "sel" : ""} onClick={() => setState({ manualSpeed: s })} aria-pressed={speed === s}>
             {s}°/s
           </button>
         ))}
       </div>
+      <p className="hint gamepad-hint" title="Gamepad: hold LB or RB and use the left stick or D-pad; B = Stop, Back/View = E-STOP, Y/X = speed">
+        {pad.id
+          ? `Gamepad: ${pad.id.slice(0, 40)} · ${pad.moving ? "moving" : pad.held ? "armed" : "hold LB/RB + stick to slew"}`
+          : "Gamepad: none detected (press a button on a connected controller)"}
+      </p>
     </section>
   );
 }
 
-function ManualPad({ enabled, speed }: { enabled: boolean; speed: number }) {
+export function ManualPad({ enabled, speed, big = false }: { enabled: boolean; speed: number; big?: boolean }) {
   const timer = useRef<number | undefined>(undefined);
   const start = (dAlt: number, dAz: number) => {
     if (!enabled) return;
@@ -342,7 +365,7 @@ function ManualPad({ enabled, speed }: { enabled: boolean; speed: number }) {
     </button>
   );
   return (
-    <div className="manual" aria-label="Manual slew (press and hold)">
+    <div className={`manual${big ? " big" : ""}`} aria-label="Manual slew (press and hold)">
       {btn("Alt +", 1, 0, "up")}
       {btn("Az −", 0, -1, "left")}
       <div className="pad-center">

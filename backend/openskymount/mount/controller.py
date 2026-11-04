@@ -61,9 +61,13 @@ class TargetTrack:
     def ensure(self, t0: float, t1: float) -> None:
         if len(self.t) and self.t[0] <= t0 and self.t[-1] >= t1:
             return
-        # One vectorised ephemeris call covers the next few minutes (2 s sample spacing).
-        span = max(120.0, (t1 - t0) * 4.0)
-        n = int(min(600, span / 2.0)) + 1
+        # One vectorised ephemeris call covers the next few minutes (2 s sample spacing). Earth satellites
+        # move up to ~1°/s with strong curvature near culmination: 0.25 s spacing keeps the linear
+        # interpolation error below an arcsecond.
+        spacing, min_span = (0.25, 60.0) if self.target.fast else (2.0, 120.0)
+        span = max(min_span, (t1 - t0) * 4.0)
+        n = int(min(600, span / spacing)) + 1
+        span = min(span, (n - 1) * spacing)
         times = np.linspace(t0 - 1.0, t0 + span, n)
         alt, az = self.engine.altaz(self.target, times)
         self.t, self.alt = times, alt
@@ -113,6 +117,9 @@ class MountController:
         self.last_target_pos: tuple[float, float, float, float] | None = None
         self.tracking_error: float | None = None
         self._status: DriverStatus | None = None
+        # Incremented by every motion command (GoTo, stop, E-stop, manual, home, reset). Lets the session
+        # sequencer notice that somebody else took over the mount.
+        self.command_serial = 0
         self.connect()
 
     # ----------------------------------------------------------- utilities
@@ -190,6 +197,32 @@ class MountController:
         best = nearest_unwrapped(az, current, lim.az_min + m, lim.az_max - m)
         return best if best is not None else nearest_unwrapped(az, current, lim.az_min, lim.az_max)
 
+    def _pick_az_for_pass(self, target: Target, m_az: float, current: float) -> float | None:
+        """Multi-turn azimuth start for a fast target (satellite pass) such that the whole pass, until the target
+        drops below the altitude limit (at most 20 min), stays inside the cable-wrap limits. An unwind in the
+        middle of a pass would lose the satellite for most of a minute."""
+        times = self._t + np.arange(0.0, 1200.0, 2.0)
+        alts, azs = self.engine.altaz(target, times)
+        below = np.nonzero(alts < self.config.control.min_target_altitude)[0]
+        n = int(below[0]) if len(below) else len(times)
+        if n < 2:
+            return None
+        path = np.degrees(np.unwrap(np.radians(azs[:n])))
+        lo, hi = float(path.min() - path[0]), float(path.max() - path[0])
+        m = self.config.sim.backlash_az / 2 if self.config.control.backlash_compensation else 0.0
+        lim = self.limits
+        best: float | None = None
+        base = current + wrap180(m_az - current)
+        for k in range(-3, 4):
+            c = base + 360.0 * k
+            if lim.az_min + m <= c + lo and c + hi <= lim.az_max - m and (best is None or abs(c - current) < abs(best - current)):
+                best = c
+        return best
+
+    def _choose_az(self, target: Target, m_az: float, current: float) -> float | None:
+        best = self._pick_az_for_pass(target, m_az, current) if target.fast else None
+        return best if best is not None else self._pick_az(m_az, current)
+
     def _sun_separation_at(self, alt: float, az: float, t: float) -> float:
         s_alt, s_az = self.engine.sun_altaz(t)
         return separation(alt, az, float(s_alt), float(s_az))
@@ -199,6 +232,7 @@ class MountController:
 
     # ------------------------------------------------------------- commands
     def goto(self, target_id: str, track: bool | None = None) -> dict[str, Any]:
+        self.command_serial += 1
         self._require_operational()
         try:
             target = self.engine.resolve(target_id)
@@ -208,6 +242,8 @@ class MountController:
         if target.is_sun and not self._solar_policy_allows():
             raise CommandError("automatic slewing to the Sun is disabled (solar safety); see docs/safety.md")
         alt, az, _, _ = self.engine.altaz_rates(target, self._t)
+        if not (math.isfinite(alt) and math.isfinite(az)):
+            raise CommandError(f"no valid position for {target.name} (orbital elements unusable at this time?)")
         if alt < ctl.min_target_altitude and target.kind != "altaz":
             raise CommandError(f"{target.name} is below the altitude limit ({alt:.1f}° < {ctl.min_target_altitude:.1f}°)")
         if target.kind == "altaz" and not (self.limits.min_altitude <= alt <= self.limits.max_altitude):
@@ -225,7 +261,7 @@ class MountController:
             self._check_path_avoids_sun(alt, az)
         st = self.driver.status()
         _, m_az = self.model.sky_to_mount(alt, az)
-        az_cmd = self._pick_az(m_az, st.az.position)
+        az_cmd = self._choose_az(target, m_az, st.az.position)
         if az_cmd is None:
             raise CommandError("azimuth not reachable within cable-wrap limits")
         self.target = target
@@ -238,6 +274,9 @@ class MountController:
         self._settle = 0
         self.flags.clear()
         self.log(f"GoTo {target.name} (alt {alt:.2f}°, az {az:.2f}°)")
+        age = self.engine.elements_age_days(target, self._t)
+        if age is not None and abs(age) > 14.0:
+            self.log(f"TLE of {target.name} is {abs(age):.0f} days from its epoch: the prediction may be far off", "warning")
         return {"ok": True, "message": f"Slewing to {target.name}"}
 
     def _check_path_avoids_sun(self, alt: float, az: float) -> None:
@@ -259,6 +298,7 @@ class MountController:
         return self.goto(self.target.id, track=True)
 
     def stop_tracking(self) -> dict[str, Any]:
+        self.command_serial += 1
         if self.mode in (Mode.TRACKING, Mode.SLEWING):
             self.driver.stop()
             self.mode = Mode.IDLE
@@ -266,6 +306,7 @@ class MountController:
         return {"ok": True, "message": "Tracking stopped"}
 
     def stop(self) -> dict[str, Any]:
+        self.command_serial += 1
         self.driver.stop()
         if self.mode not in (Mode.STOPPED, Mode.FAULT, Mode.DISCONNECTED):
             self.mode = Mode.IDLE
@@ -274,12 +315,14 @@ class MountController:
         return {"ok": True, "message": "Stopping"}
 
     def emergency_stop(self) -> dict[str, Any]:
+        self.command_serial += 1
         self.driver.emergency_stop()
         self.mode = Mode.STOPPED
         self.log("EMERGENCY STOP (software). Use the hardware E-stop on physical mounts.", "error")
         return {"ok": True, "message": "Emergency stop engaged"}
 
     def reset(self) -> dict[str, Any]:
+        self.command_serial += 1
         self.driver.reset()
         if not self.driver.status().connected:
             try:
@@ -293,6 +336,7 @@ class MountController:
         return {"ok": True, "message": "Reset"}
 
     def manual(self, alt_rate: float, az_rate: float, wall_time: float) -> dict[str, Any]:
+        self.command_serial += 1
         self._require_operational()
         if not all(math.isfinite(x) for x in (alt_rate, az_rate)):
             raise CommandError("rates must be finite numbers")
@@ -313,6 +357,7 @@ class MountController:
         return {"ok": True, "message": "Manual slew"}
 
     def home(self) -> dict[str, Any]:
+        self.command_serial += 1
         self._require_operational()
         self.driver.home()
         self.mode = Mode.HOMING
@@ -383,7 +428,8 @@ class MountController:
             if span < 0:
                 self._time_jump(sim_time)
             return
-        steady = self.mode == Mode.TRACKING and not self.flags and (self.tracking_error or 1.0) < 0.01
+        steady = (self.mode == Mode.TRACKING and not self.flags and (self.tracking_error or 1.0) < 0.01
+                  and not (self.target is not None and self.target.fast))
         n = min(MAX_CONTROL_STEPS, max(1, math.ceil(span / (STEADY_CONTROL_DT if steady else CONTROL_DT) - 1e-9)))
         step = span / n
         if self.track is not None and self.mode in (Mode.SLEWING, Mode.TRACKING):
@@ -416,7 +462,7 @@ class MountController:
                 self.log(f"{self.target.name} is below the horizon at the new time; tracking stopped", "warning")
             else:
                 _, m_az = self.model.sky_to_mount(alt, az)
-                self._az_cmd = self._pick_az(m_az, st.az.position)
+                self._az_cmd = self._choose_az(self.target, m_az, st.az.position)
         self._status = self.driver.status()
 
     def _control_step(self, t: float, wall: float) -> None:
@@ -494,6 +540,11 @@ class MountController:
         ctl = self.config.control
         lim = self.limits
         alt, az, ar, zr = self.track.at(t)
+        if not all(math.isfinite(x) for x in (alt, az, ar, zr)):
+            self.driver.stop()
+            self.mode = Mode.IDLE
+            self.log(f"No valid position for {self.target.name}; tracking stopped", "warning")
+            return
         self.last_target_pos = (alt, az, ar, zr)
         if self.target.kind != "altaz" and alt < ctl.min_target_altitude:
             self.driver.stop()
@@ -507,8 +558,12 @@ class MountController:
                 self.mode = Mode.IDLE
                 self.log("Target entered the solar exclusion zone; tracking stopped", "warning")
                 return
+        # Setpoints take effect after the link latency: lead them by it (a pure lag of latency x rate would be
+        # 0.75" for a star but about 3' for a low-orbit satellite).
+        lead = self.driver.command_latency
+        c_alt, c_az, ar, zr = self.track.at(t + lead) if lead > 0 else (alt, az, ar, zr)
         # Mechanical altitude reach (payload-dependent).
-        cmd_alt, az_m = self.model.sky_to_mount(alt, az)
+        cmd_alt, az_m = self.model.sky_to_mount(c_alt, c_az)
         if cmd_alt > lim.max_altitude or cmd_alt < lim.min_altitude:
             self.flags.add("out_of_reach")
             cmd_alt = max(lim.min_altitude, min(lim.max_altitude, cmd_alt))

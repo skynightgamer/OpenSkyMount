@@ -1,20 +1,21 @@
 # Test results
 
-Last full run: 2026-11-03, Linux cloud container, Python 3.13.18, Node 22.23, with the optional extras (Astropy,
-cedar-solve) and alpyca installed. Versions are listed in `backend/requirements.lock.txt` and
+Last full run: 2026-11-03 (session 6), Linux cloud container, Python 3.13, Node 22, **without** the optional extras
+(Astropy, cedar-solve; their 8 tests skipped, they run in CI's 3.13 job). Versions are listed in `backend/requirements.lock.txt` and
 `frontend/package-lock.json`. The same checks run in GitHub Actions on every push (`.github/workflows/ci.yml`):
 backend on Python 3.11 (without extras) and 3.13 (with extras), frontend, and browser E2E.
 
 | Suite | Command | Result |
 |---|---|---|
 | Lint (ruff) | `ruff check backend/openskymount backend/tests` | pass |
-| Types (mypy) | `cd backend && mypy openskymount` | pass (24 files) |
-| Backend tests | `cd backend && pytest -q` | **119 passed, 0 skipped** in ~75 s with the optional extras; without them (CI, Python 3.11) **104 passed, 8 skipped** (Astropy and solver tests) |
+| Types (mypy) | `cd backend && mypy openskymount` | pass (27 files) |
+| Backend tests | `cd backend && pytest -q` | **118 passed, 8 skipped** in ~60 s without the optional extras (session 5 with extras: 119 passed, 0 skipped, before the 13 new tests) |
 | Frontend types | `cd frontend && npx tsc -p tsconfig.json` | pass |
-| Frontend unit | `cd frontend && npx vitest run` | **16 passed** (projection math, Earth-rotation extrapolation, formatting, fixed-width readouts, angle formats, time-zone round trip incl. DST, exposure planner) |
+| Frontend unit | `cd frontend && npx vitest run` | **24 passed** (projection math, Earth-rotation extrapolation, formatting, fixed-width readouts, angle formats, time-zone round trip incl. DST, exposure planner, gamepad mapping and dead-man refresh, telemetry parsing/statistics/CSV) |
 | Browser E2E | `node frontend/e2e/smoke.cjs` (headless Chromium, desktop + phone viewport) | **pass** (tonight list, search, exposure planner, display options, GoTo, two-client sync, Sync → alignment, E-STOP) |
 | Browser E2E (both scripts) | `scripts/e2e.sh` (builds the UI, starts both servers, waits for `/api/health`) | **pass** |
 | Browser E2E, password mode | `node frontend/e2e/auth.cjs` (server with `OPENSKYMOUNT_PASSWORD`) | **pass** (login screen, E-STOP without login, wrong password, catalog loads after login, reload keeps session, logout) |
+| Browser E2E, features | `node frontend/e2e/features.cjs` (fresh server) | **pass** (paste ISS TLE → pass list → session with the pass and Capella at ×60 → ISS tracked (true error ~1″ in the readout, 7.2″ RMS / 34″ max over the pass) → recording stopped with the session → replay statistics; emulated gamepad: no motion without dead man, slew while RB held, stop on release, Back = E-STOP; phone `?view=hand`: take control, press-and-hold pad; manifest, service worker and icons served) |
 
 ## Coverage by area
 
@@ -29,6 +30,9 @@ backend on Python 3.11 (without extras) and 3.13 (with extras), frontend, and br
 | Observing planner | `test_tonight.py` (5) | Darkness window boundaries (Sun at −12°), already-dark start, polar summer, content and ordering, fast method vs full apparent position (< 0.05°), culmination altitude, type filter |
 | ASCOM Alpaca | `test_alpaca.py` (10) | Management API; response envelope (transaction ids, case-insensitive parameter names); HTTP 400/404 and ASCOM error numbers (NotConnected, NotImplemented, InvalidValue, ValueNotSet, InvalidOperation, ActionNotImplemented); per-client connection; reported position = controller pointing; **GoTo by JNow coordinates ends tracking Capella within 10″ of its true position**; Sync adds an alignment point; Tracking on/off and refusal below the altitude limit; AbortSlew (incl. restoring tracking); **control authority** (refused while the browser holds control, AbortSlew still accepted, takes free control, browser can take it back); **solar exclusion**; site validation; idle-client purge; HTTP Basic in password mode; `--no-alpaca`; UDP discovery reply; **end-to-end with alpyca over a real HTTP server**. Encoder noise is switched off in these tests (it is tested in `test_motion.py`) so 10″ tolerances check the coordinates, not the noise model |
 | Hardware path | `test_protocol.py` (6) | OSM/1 parsing and round trip; fake-firmware replies; GoTo, manual and E-stop over real TCP; strict solar policy on the hardware path; firmware watchdog; link-loss detection and reconnect |
+| Orbital elements | `test_orbits.py` (7) | TLE parsing, checksums, 3LE names, epoch; MPC comet and MPCORB parsing, packed epochs; store persistence, search, removal; **ISS alt/az vs an independent sgp4 → GMST (IAU 1982) → WGS84 ENU chain < 30″** over 3+ passes, rise/set at 10°; **comet Encke vs Meeus 33.a** (RA within 0.5″, Δ within 2e-5 AU) and vs an independent Kepler propagation (< 1″); asteroid (MPCORB) vs independent Kepler (< 1″) and Ceres-range magnitude; **ISS pass tracking stress test**: GoTo at rise, worst true error < 30″ at > 1.5°/s, no cable unwind, ends below the limit |
+| Observing session | `test_sequencer.py` (4) | Queue order, durations (±1.5 s), "until next start", start times, skip of a below-horizon target with reason, completion, persistence and reset; Stop/E-STOP/fault pause without restarting motion and resume; Sun refused; satellite pass item ends when the ISS sets |
+| Server features | `test_server_features.py` (2) | Orbit upload (text and JSON), bad TLE 400, list/age, search, object info, passes, sky-map bodies, persistence, removal (409 when missing); queue commands need control; session with recording over the real loop; log list/download/format/path traversal/delete |
 | Plate solving | `test_solve.py` (6) | 5 synthetic fields solved (< 90″, roll < 0.5°, FOV < 0.1°); alignment loop reduces a 0.4–0.7° error to < 0.03° |
 
 ## Status classification
@@ -46,10 +50,14 @@ backend on Python 3.11 (without extras) and 3.13 (with extras), frontend, and br
 | Multi-star pointing model, observing planner, exposure planner, mag-8 catalog with proper motion | Implemented and verified (automated; pointing model in simulation only) |
 | Hardware E-stop, current limits, real sensors | Planned / blocked by missing hardware |
 | ASCOM Alpaca Telescope device | Implemented and verified with automated tests and the alpyca client; **not yet tested with N.I.N.A., Stellarium or ConformU** |
+| Observing sessions, satellites (TLE), comets/asteroids (MPC), telemetry replay | Implemented and verified (automated and browser E2E; simulation only; element sets supplied by the user) |
+| Gamepad control, hand-controller layout, PWA | Implemented; verified with an emulated Gamepad API and a phone viewport in headless Chromium. **Not tried with a real gamepad or installed on a real phone** |
 | LX200/OnStepX adapter, INDI exposure, cone/non-perpendicularity terms | Planned |
 
 ## Known test caveats
 - Astropy cross-checks use Astropy's bundled IERS data with auto-download disabled.
 - Synthetic plate-solve images come from the same Hipparcos-derived catalog as the solver database, so real-sky
   robustness (optics distortion, clouds, light pollution) is not tested.
-- The E2E test depends on the date set inside the test (2026-11-01 02:00) for Jupiter's visibility.
+- The E2E test depends on the date set inside the test (2026-11-01 02:00) for Jupiter's visibility; the features
+  E2E uses the Skyfield-documentation ISS TLE and a pass on 2014-01-21.
+- The axis control-law fix (D37) changed the simulated servo; all existing motion/controller tolerances still pass.

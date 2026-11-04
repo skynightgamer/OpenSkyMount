@@ -36,7 +36,7 @@ async function waitText(page, selector, re, timeout = 30000) {
   // Window A takes control and moves the simulated clock to a night when Jupiter is up.
   await a.getByRole("button", { name: "Take control" }).click();
   await waitText(a, ".authority", /You have control/);
-  await a.fill('input[type="datetime-local"]', "2026-11-01T02:00");
+  await a.fill('.clock input[type="datetime-local"]', "2026-11-01T02:00");
   await a.getByRole("button", { name: "×10" }).click();
   await waitText(a, ".clock-read", /simulated ×10/);
 

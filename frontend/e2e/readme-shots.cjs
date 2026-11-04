@@ -34,7 +34,7 @@ async function waitText(page, selector, re, timeout = 60000) {
   // A clear night in Berlin with Jupiter well up; GoTo and track it with the telescope payload.
   await desk.getByRole("button", { name: "Take control" }).click();
   await waitText(desk, ".authority", /You have control/);
-  await desk.fill('input[type="datetime-local"]', "2026-11-01T02:00");
+  await desk.fill('.clock input[type="datetime-local"]', "2026-11-01T02:00");
   await desk.getByRole("button", { name: "×10" }).click();
   await desk.fill('input[type="search"]', "Jupiter");
   await desk.locator(".hits button").first().click({ noWaitAfter: true });

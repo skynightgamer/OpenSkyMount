@@ -88,6 +88,33 @@ export interface PublicConfig {
   plate_solver: boolean;
 }
 
+export interface QueueItem {
+  id: string;
+  target: string;
+  name: string;
+  start_at: number | null;
+  duration_s: number | null;
+  status: "pending" | "waiting" | "slewing" | "tracking" | "done" | "skipped" | "interrupted";
+  message: string;
+  started_at: number | null;
+  tracking_since: number | null;
+  finished_at: number | null;
+}
+
+export interface SessionInfo {
+  running: boolean;
+  current: string | null;
+  remaining_s: number | null;
+  items: QueueItem[];
+}
+
+export interface RecordingInfo {
+  active: boolean;
+  name: string | null;
+  samples: number;
+  bytes: number;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -102,6 +129,10 @@ export interface State {
   clock: ClockInfo | null;
   clockReceived: number; // performance.now()/1000 at receipt
   control: ControlInfo | null;
+  session: SessionInfo | null;
+  recording: RecordingInfo | null;
+  /** Changes whenever orbital elements (satellites, comets, asteroids) are loaded or removed. */
+  orbitsRevision: number;
   selectedId: string | null;
   toasts: Toast[];
   latencyMs: number | null;
@@ -110,7 +141,12 @@ export interface State {
   /** True when the server has a password set (shows the log-out button). */
   authEnabled: boolean;
   prefs: DisplayPrefs;
+  /** Manual slew rate (deg/s) shared by the on-screen pad, the hand controller and a gamepad. */
+  manualSpeed: number;
+  gamepad: { id: string | null; held: boolean; moving: boolean };
 }
+
+export const MANUAL_SPEEDS = [0.05, 0.5, 2, 5];
 
 const PREFS_KEY = "osm-display";
 function loadPrefs(): DisplayPrefs {
@@ -132,12 +168,17 @@ let state: State = {
   clock: null,
   clockReceived: 0,
   control: null,
+  session: null,
+  recording: null,
+  orbitsRevision: 0,
   selectedId: null,
   toasts: [],
   latencyMs: null,
   auth: "unknown",
   authEnabled: false,
   prefs: loadPrefs(),
+  manualSpeed: 1,
+  gamepad: { id: null, held: false, moving: false },
 };
 
 /** Display preferences are per device (kept in this browser only). */
@@ -305,7 +346,15 @@ function handle(msg: Record<string, unknown>): void {
         clock: msg.clock as ClockInfo,
         clockReceived: performance.now() / 1000,
         control: msg.control as ControlInfo,
+        session: (msg.session as SessionInfo) ?? null,
+        recording: (msg.recording as RecordingInfo) ?? null,
+        ...(typeof msg.orbits_revision === "number" && msg.orbits_revision !== state.orbitsRevision
+          ? { orbitsRevision: msg.orbits_revision }
+          : {}),
       });
+      break;
+    case "orbits":
+      if (typeof msg.revision === "number") setState({ orbitsRevision: msg.revision });
       break;
     case "control":
       setState({ control: msg as unknown as ControlInfo });
