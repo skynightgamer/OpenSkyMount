@@ -87,4 +87,21 @@ _Last updated: 2026-11-04 (session 6)._ Main branch: `main` (session 6 work merg
   installed this session), 24 frontend unit tests, all three browser E2E scripts.
   **Not done / not verified**: real gamepads (only an emulated Gamepad API object), installing the PWA on a real
   phone, real TLE/MPC files from CelesTrak/MPC (blocked from the container; tested with documented elements).
+- **Session 7 (2026-11-04)**: user feedback: sleeker, more realistic phone model and a more compelling sky map (branch
+  `feat/visuals-phone-skymap`). (1) **Phone model** rebuilt (D42): slim titanium-style frame with rounded edges,
+  frosted back glass, raised camera plateau with three lenses (main lens on the pointing axis), flash, LiDAR, side
+  buttons, USB-C port and speaker holes, antenna bands, a lit camera-app screen with a dynamic-island cut-out, and a
+  real spring clamp (guide rods, sliding jaws with rubber pads and lips, mounting block with thumb screw). The 3D view
+  now zooms to the cursor and allows closer zoom (0.12 m) to inspect the payload. (2) **Sky map** (D41,
+  `src/sky/skyrender.ts`): sky colour by Sun altitude with a warm twilight glow toward the Sun, blue day sky with a
+  sun halo, moonlit brightening and a horizon glow; the **Milky Way** from the Milky Way Outline Catalog
+  (`scripts/build_milkyway.py` → `src/sky/milkyway.png`, new "Milky Way" layer toggle, fades in twilight and
+  moonlight); glow sprites for bright stars, atmospheric extinction near the horizon; constellation lines that stop
+  short of their stars; DSO symbols by type (galaxy, open/globular cluster, nebula, planetary); Moon drawn with its
+  real phase and the bright limb toward the Sun; planet glows. README screenshots regenerated.
+  9 new frontend unit tests (Milky Way map checked against galactic coordinates and the Sagittarius/Scutum star
+  clouds, sky colour model, Moon bright-limb direction); `@types/node` added as a dev dependency for that test.
+  118 backend tests (8 skipped, optional extras not installed), 33 frontend unit tests and all three browser E2E
+  scripts pass. Measured ~8 ms of script time per frame while panning the phone-size sky map (headless Chromium).
+  **Not verified**: frame rate on a real phone.
 
