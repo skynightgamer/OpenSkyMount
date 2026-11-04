@@ -6,6 +6,7 @@ import {
   altazToVec,
   basis,
   bvColor,
+  DEG,
   mulMtV,
   mulMV,
   project,
@@ -18,6 +19,7 @@ import {
   type Vec3,
   type View,
 } from "./projection";
+import { drawSkyBackground, glowSprite, hexRgb, limbAngle, moonLitPath, SPRITE_CORE, type SkyLight } from "./skyrender";
 
 interface Catalog {
   stars: [number, number, number, number, number, string][];
@@ -114,6 +116,7 @@ export interface Layers {
   altaz: boolean;
   equatorial: boolean;
   dsos: boolean;
+  milkyway: boolean;
 }
 
 // User-supplied objects (orbital elements): drawn smaller, coloured by kind.
@@ -355,11 +358,9 @@ function hoverLabel(id: string, cat: Prepared | null, f?: Frame): string {
 }
 
 // ------------------------------------------------------------------ drawing
-function skyColors(sunAlt: number): [string, string, string] {
-  if (sunAlt > 0) return ["#2a5d9a", "#5b8fc9", "#1f3346"];
-  if (sunAlt > -6) return ["#16243f", "#3a4f78", "#141b24"];
-  if (sunAlt > -12) return ["#0a1226", "#1a2747", "#0f141b"];
-  return ["#030408", "#090c16", "#100d0a"];
+const GROUND_COLORS = { day: "#25302a", twilight: "#12161a", night: "#0b0c0e" };
+function groundColor(sunAlt: number): string {
+  return sunAlt > 0 ? GROUND_COLORS.day : sunAlt > -12 ? GROUND_COLORS.twilight : GROUND_COLORS.night;
 }
 
 function polyline(ctx: CanvasRenderingContext2D, b: Basis, pts: Vec3[], maxJump: number) {
@@ -386,6 +387,71 @@ function polyline(ctx: CanvasRenderingContext2D, b: Basis, pts: Vec3[], maxJump:
   ctx.stroke();
 }
 
+/** Constellation stick figure: each segment stops `gap` px short of its stars, like a printed chart. */
+function stickFigure(ctx: CanvasRenderingContext2D, b: Basis, pts: Vec3[], maxJump: number, gap: number) {
+  let last: [number, number, number] | null = null;
+  for (const v of pts) {
+    const p = project(b, v, -0.3);
+    if (p && last) {
+      const dx = p[0] - last[0];
+      const dy = p[1] - last[1];
+      const d = Math.hypot(dx, dy);
+      if (d > 2.5 * gap && d < maxJump) {
+        const ux = dx / d;
+        const uy = dy / d;
+        ctx.moveTo(last[0] + ux * gap, last[1] + uy * gap);
+        ctx.lineTo(p[0] - ux * gap, p[1] - uy * gap);
+      }
+    }
+    last = p;
+  }
+}
+
+/** Extra magnitudes of atmospheric extinction at altitude `alt` (deg), k = 0.25 mag per airmass. */
+function extinction(alt: number): number {
+  if (alt <= 0) return 0; // below the horizon: drawn dimmed instead
+  const airmass = 1 / (Math.sin(alt * DEG) + 0.50572 * Math.pow(alt + 6.07995, -1.6364)); // Kasten & Young 1989
+  return 0.25 * (airmass - 1);
+}
+
+/** Chart symbol for a deep-sky object type (common atlas conventions). */
+function dsoSymbol(ctx: CanvasRenderingContext2D, type: string, x: number, y: number) {
+  const t = type.toLowerCase();
+  ctx.beginPath();
+  if (t.includes("galaxy")) {
+    ctx.strokeStyle = "rgba(255,150,140,0.8)";
+    ctx.ellipse(x, y, 5.5, 2.6, -0.5, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (t.includes("globular")) {
+    ctx.strokeStyle = "rgba(255,214,140,0.85)";
+    ctx.arc(x, y, 4.5, 0, Math.PI * 2);
+    ctx.moveTo(x - 4.5, y);
+    ctx.lineTo(x + 4.5, y);
+    ctx.moveTo(x, y - 4.5);
+    ctx.lineTo(x, y + 4.5);
+    ctx.stroke();
+  } else if (t.includes("open") || t.includes("asterism")) {
+    ctx.strokeStyle = t.includes("open") ? "rgba(255,214,140,0.6)" : "rgba(200,200,200,0.5)";
+    ctx.setLineDash([2, 2]);
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  } else if (t.includes("planetary")) {
+    ctx.strokeStyle = "rgba(140,230,190,0.85)";
+    ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      ctx.moveTo(x + dx * 3.2, y + dy * 3.2);
+      ctx.lineTo(x + dx * 6, y + dy * 6);
+    }
+    ctx.stroke();
+  } else {
+    // emission / reflection nebulae, supernova remnants
+    ctx.strokeStyle = "rgba(140,230,190,0.85)";
+    ctx.roundRect(x - 5, y - 4, 10, 8, 2.5);
+    ctx.stroke();
+  }
+}
+
 function render(
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -399,23 +465,30 @@ function render(
   const st = getState();
   const now = simNow();
   const sunAlt = fr?.f.sun_alt ?? -30;
-  const [c0, c1, ground] = skyColors(sunAlt);
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, c0);
-  grad.addColorStop(1, c1);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
+  const m = fr ? advanceMatrix(fr.f.matrix, now - fr.f.time) : null;
+  const ground = groundColor(sunAlt);
   const hits: Hit[] = [];
   const maxJump = Math.max(w, h) * 0.5;
 
-  if (fr && cat) {
-    const m = advanceMatrix(fr.f.matrix, now - fr.f.time);
+  // Sky background with twilight, moonlight and the Milky Way.
+  const sunB = fr?.f.bodies.find((x) => x.kind === "sun");
+  const moonB = fr?.f.bodies.find((x) => x.kind === "moon");
+  const light: SkyLight = {
+    sun: m && sunB ? mulMV(m, radecToVec(sunB.ra_j2000, sunB.dec_j2000)) : [0, 0, -1],
+    sunAlt,
+    moon: m && moonB ? mulMV(m, radecToVec(moonB.ra_j2000, moonB.dec_j2000)) : null,
+    moonAlt: moonB?.alt ?? -90,
+    moonIllum: fr?.f.moon.illuminated ?? 0,
+  };
+  drawSkyBackground(ctx, b, w, h, m, light, layers.milkyway, Math.floor(now / 4));
+
+  if (fr && cat && m) {
     const limitMag =
       sunAlt > 0 ? 1.0 : sunAlt > -6 ? 2.5 : view.fov > 120 ? 5.0 : view.fov > 60 ? 5.5 : view.fov > FAINT_FOV ? 6.5 : view.fov > 15 ? 7.3 : 8.0;
     if (view.fov <= FAINT_FOV && sunAlt < -6) requestFaint();
 
     if (layers.equatorial) {
-      ctx.strokeStyle = "rgba(90,160,255,0.22)";
+      ctx.strokeStyle = "rgba(90,160,255,0.2)";
       ctx.lineWidth = 1;
       for (let ra = 0; ra < 360; ra += 30) {
         const pts: Vec3[] = [];
@@ -425,18 +498,22 @@ function render(
       for (let dec = -75; dec <= 75; dec += 15) {
         const pts: Vec3[] = [];
         for (let ra = 0; ra <= 360; ra += 3) pts.push(mulMV(m, radecToVec(ra, dec)));
-        ctx.strokeStyle = dec === 0 ? "rgba(90,160,255,0.45)" : "rgba(90,160,255,0.22)";
+        ctx.strokeStyle = dec === 0 ? "rgba(90,160,255,0.42)" : "rgba(90,160,255,0.2)";
         polyline(ctx, b, pts, maxJump);
       }
     }
 
     if (layers.constellations) {
-      ctx.strokeStyle = "rgba(120,170,230,0.35)";
+      ctx.strokeStyle = "rgba(125,165,225,0.34)";
       ctx.lineWidth = 1;
-      for (const c of cat.lines) for (const seg of c.vecs) polyline(ctx, b, seg.map((v) => mulMV(m, v)), maxJump);
+      ctx.lineCap = "round";
+      const gap = view.fov < 40 ? 6 : 4;
+      ctx.beginPath();
+      for (const c of cat.lines) for (const seg of c.vecs) stickFigure(ctx, b, seg.map((v) => mulMV(m, v)), maxJump, gap);
+      ctx.stroke();
       if (layers.labels && view.fov < 150) {
-        ctx.fillStyle = "rgba(170,160,140,0.5)";
-        ctx.font = "11px system-ui, sans-serif";
+        ctx.fillStyle = "rgba(150,172,210,0.5)";
+        ctx.font = "italic 11px system-ui, sans-serif";
         ctx.textAlign = "center";
         for (const c of cat.lines) {
           const p = project(b, mulMV(m, c.label), 0);
@@ -446,28 +523,32 @@ function render(
     }
 
     if (layers.dsos && view.fov < 120) {
-      ctx.strokeStyle = "rgba(160,220,170,0.75)";
-      ctx.fillStyle = "rgba(160,220,170,0.8)";
+      ctx.lineWidth = 1.1;
       ctx.font = "10px system-ui, sans-serif";
       ctx.textAlign = "left";
       for (const d of cat.dsos) {
         if ((d.mag ?? 9) > limitMag + 3) continue;
         const p = project(b, mulMV(m, d.v), 0);
         if (!p || p[0] < -10 || p[0] > w + 10 || p[1] < -10 || p[1] > h + 10) continue;
-        ctx.beginPath();
-        ctx.ellipse(p[0], p[1], 4, 2.5, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        if (layers.labels && view.fov < 70) ctx.fillText(d.id, p[0] + 6, p[1] + 3);
+        dsoSymbol(ctx, d.type, p[0], p[1]);
+        if (layers.labels && view.fov < 70) {
+          ctx.fillStyle = "rgba(200,215,205,0.7)";
+          ctx.fillText(d.id, p[0] + 7, p[1] + 3);
+        }
         hits.push({ id: "dso:" + d.id, x: p[0], y: p[1] });
       }
     }
 
-    // Stars (bright tier, then the faint tier when zoomed in and loaded).
+    // Stars (bright tier, then the faint tier when zoomed in and loaded). Additive glow sprites for the brighter
+    // stars, plain dots for the faint ones; dimmed by atmospheric extinction near the horizon.
     ctx.font = "11px system-ui, sans-serif";
     ctx.textAlign = "left";
-    const zoomBoost = Math.max(0, Math.log2(100 / view.fov)) * 0.4;
+    const zoomBoost = Math.max(0, Math.log2(100 / view.fov)) * 0.35;
     const tiers: StarTier[] = [{ stars: cat.stars, starVec: cat.starVec }];
     if (limitMag > 6.5 && faintTier) tiers.push(faintTier);
+    const labels: [string, number, number][] = [];
+    const day = sunAlt > -4;
+    ctx.globalCompositeOperation = day ? "source-over" : "lighter";
     for (const tier of tiers) {
       const sv = tier.starVec;
       for (let i = 0; i < tier.stars.length; i++) {
@@ -482,44 +563,83 @@ function render(
           m[2][0] * x + m[2][1] * y + m[2][2] * z,
         ];
         const p = project(b, v, 0);
-        if (!p || p[0] < -5 || p[0] > w + 5 || p[1] < -5 || p[1] > h + 5) continue;
-        const r = Math.max(0.6, (6.8 - s[3]) * 0.42 + zoomBoost);
-        ctx.fillStyle = bvColor(s[4]);
-        ctx.globalAlpha = (v[2] < 0 ? 0.35 : 1) * (s[3] > 6.5 ? 0.55 + 0.3 * (8 - s[3]) / 1.5 : 1);
-        ctx.beginPath();
-        ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
-        ctx.fill();
+        if (!p || p[0] < -20 || p[0] > w + 20 || p[1] < -20 || p[1] > h + 20) continue;
+        const alt = Math.asin(Math.max(-1, Math.min(1, v[2]))) / DEG;
+        const mag = s[3] + extinction(alt);
+        if (mag > limitMag + 0.3 && s[3] > 2) continue;
+        const r = Math.max(0.55, (6.9 - mag) * 0.38 + zoomBoost);
+        const below = v[2] < 0 ? 0.35 : 1;
+        const faint = mag > 6.5 ? 0.55 + (0.3 * (8 - mag)) / 1.5 : mag > 5 ? 0.75 + 0.25 * (6.5 - mag) / 1.5 : 1;
+        const color = bvColor(s[4]);
+        ctx.globalAlpha = Math.max(0.15, below * faint);
+        if (r > 1.25 && !day) {
+          const hs = r / SPRITE_CORE;
+          ctx.drawImage(glowSprite(color), p[0] - hs, p[1] - hs, 2 * hs, 2 * hs);
+        } else {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+          ctx.fill();
+        }
         if (layers.labels && s[5] && (s[3] < 1.6 || (view.fov < 60 && s[3] < 3.5) || (view.fov < 20 && s[3] < 6.5))) {
-          ctx.fillStyle = "rgba(220,230,255,0.75)";
-          ctx.globalAlpha = 1;
-          ctx.fillText(s[5], p[0] + r + 3, p[1] + 3);
+          labels.push([s[5], p[0] + r + 3, p[1] + 3]);
         }
         if (s[3] < 5.5 || view.fov < 40) hits.push({ id: "hip:" + s[0], x: p[0], y: p[1] });
       }
     }
+    ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(220,230,255,0.78)";
+    for (const [t, x, y] of labels) ctx.fillText(t, x, y);
 
     // Sun, Moon, planets.
     for (const body of fr.f.bodies) {
-      const p = project(b, mulMV(m, radecToVec(body.ra_j2000, body.dec_j2000)), 0);
+      const v = mulMV(m, radecToVec(body.ra_j2000, body.dec_j2000));
+      const p = project(b, v, 0);
       if (!p) continue;
       const big = body.kind === "sun" || body.kind === "moon";
       const user = body.kind in KIND_COLORS;
       const r = big ? Math.max(5, (0.26 * b.scale * Math.PI) / 180 * 2) : user ? 2.5 : 3.5;
-      ctx.fillStyle = BODY_COLORS[body.name] ?? KIND_COLORS[body.kind] ?? "#fff";
-      ctx.beginPath();
-      ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
-      ctx.fill();
-      if (body.kind === "moon") {
-        // crude phase shading: darken by the unilluminated fraction
-        ctx.fillStyle = `rgba(5,7,13,${(1 - fr.f.moon.illuminated) * 0.85})`;
+      const color = BODY_COLORS[body.name] ?? KIND_COLORS[body.kind] ?? "#ffffff";
+      ctx.globalAlpha = v[2] < 0 ? 0.45 : 1;
+      if (!user) {
+        // glow
+        const gr = body.kind === "sun" ? r * 9 : body.kind === "moon" ? r * (2 + 3 * fr.f.moon.illuminated) : r * 3.2;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha *= body.kind === "moon" ? 0.5 : 0.8;
+        ctx.drawImage(glowSprite(color), p[0] - gr, p[1] - gr, 2 * gr, 2 * gr);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = v[2] < 0 ? 0.45 : 1;
+      }
+      if (body.kind === "moon" && light.sun) {
+        // Earthshine disc, then the sunlit part with the bright limb toward the Sun.
+        ctx.fillStyle = "#2a2e38";
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+        ctx.fill();
+        const ang = limbAngle((q) => project(b, q, -1), v, light.sun);
+        ctx.save();
+        ctx.translate(p[0], p[1]);
+        ctx.rotate(ang ?? 0);
+        const [cr, cg, cb] = hexRgb(color);
+        const grad = ctx.createRadialGradient(-r * 0.25, -r * 0.2, 0, 0, 0, r);
+        grad.addColorStop(0, `rgb(${cr},${cg},${cb})`);
+        grad.addColorStop(1, `rgb(${Math.round(cr * 0.8)},${Math.round(cg * 0.8)},${Math.round(cb * 0.82)})`);
+        ctx.fillStyle = grad;
+        moonLitPath(ctx, r, fr.f.moon.illuminated);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.globalAlpha = 1;
       if (layers.labels) {
         ctx.fillStyle = "#ffe6b0";
         ctx.font = "12px system-ui, sans-serif";
+        ctx.textAlign = "left";
         ctx.fillText(body.name, p[0] + r + 4, p[1] - 4);
       }
       hits.push({ id: body.id, x: p[0], y: p[1] });

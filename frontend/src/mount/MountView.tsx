@@ -414,6 +414,237 @@ function cradle(M: Mats, g: THREE.Group, depth: number, zLen: number, saddle = t
   if (saddle) mesh(new RoundedBoxGeometry(0.208, 0.012, zLen, 2, 0.003), M.anod, g, 0, -depth - 0.006, 0);
 }
 
+// ------------------------------------------------------------------ smartphone
+const PHONE = { w: 0.0776, h: 0.163, t: 0.00825, r: 0.0118 }; // a large 6.9" phone (illustrative)
+
+/** Flat rounded-rectangle panel in the xy plane with UVs normalised to its bounding box. */
+function panel(w: number, h: number, r: number): THREE.ShapeGeometry {
+  const geo = new THREE.ShapeGeometry(roundedRect(-w / 2, -h / 2, w / 2, h / 2, r), 12);
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / w + 0.5, pos.getY(i) / h + 0.5);
+  uv.needsUpdate = true;
+  return geo;
+}
+
+/** Decorative camera-app screen (night mode viewfinder). Not a live preview. */
+function phoneScreenTexture(): THREE.CanvasTexture {
+  const W = 512;
+  const H = Math.round((W * (PHONE.h - 0.004)) / (PHONE.w - 0.004));
+  const cv = document.createElement("canvas");
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext("2d")!;
+  const sky = g.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#04060d");
+  sky.addColorStop(0.75, "#0b1324");
+  sky.addColorStop(1, "#05070b");
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, W, H);
+  // viewfinder (4:3) between the top and bottom control bars
+  const vy0 = H * 0.17;
+  const vh = W * (4 / 3);
+  g.fillStyle = sky;
+  g.fillRect(0, vy0, W, vh);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const band = g.createLinearGradient(0, vy0 + vh, W, vy0);
+  band.addColorStop(0.3, "rgba(160,170,200,0)");
+  band.addColorStop(0.5, "rgba(170,175,205,0.16)");
+  band.addColorStop(0.7, "rgba(160,170,200,0)");
+  g.fillStyle = band;
+  g.fillRect(0, vy0, W, vh);
+  for (let i = 0; i < 260; i++) {
+    const x = rnd() * W;
+    const y = vy0 + rnd() * vh;
+    const m = rnd();
+    g.fillStyle = `rgba(${220 + rnd() * 35},${220 + rnd() * 30},255,${0.35 + m * 0.65})`;
+    g.beginPath();
+    g.arc(x, y, 0.6 + m * m * 2.2, 0, Math.PI * 2);
+    g.fill();
+  }
+  // grid lines
+  g.strokeStyle = "rgba(255,255,255,0.18)";
+  g.lineWidth = 1.5;
+  for (const f of [1 / 3, 2 / 3]) {
+    g.beginPath();
+    g.moveTo(W * f, vy0);
+    g.lineTo(W * f, vy0 + vh);
+    g.moveTo(0, vy0 + vh * f);
+    g.lineTo(W, vy0 + vh * f);
+    g.stroke();
+  }
+  // controls
+  g.textAlign = "center";
+  g.font = "600 22px system-ui, sans-serif";
+  g.fillStyle = "rgba(255,200,40,0.95)";
+  g.beginPath();
+  g.roundRect(W / 2 - 52, H * 0.115, 104, 34, 17);
+  g.fill();
+  g.fillStyle = "#111";
+  g.fillText("☾ 10s", W / 2, H * 0.115 + 24);
+  const zy = vy0 + vh - 50;
+  g.fillStyle = "rgba(0,0,0,0.45)";
+  g.beginPath();
+  g.roundRect(W / 2 - 90, zy - 22, 180, 44, 22);
+  g.fill();
+  g.font = "600 18px system-ui, sans-serif";
+  ["0.5", "1×", "3"].forEach((t, i) => {
+    g.fillStyle = i === 1 ? "rgba(255,200,40,0.95)" : "rgba(255,255,255,0.85)";
+    g.fillText(t, W / 2 + (i - 1) * 58, zy + 6);
+  });
+  g.font = "600 20px system-ui, sans-serif";
+  ["VIDEO", "PHOTO", "NIGHT", "PRO"].forEach((t, i) => {
+    g.fillStyle = t === "NIGHT" ? "rgba(255,200,40,0.95)" : "rgba(255,255,255,0.8)";
+    g.fillText(t, W / 2 + (i - 2) * 110 + 55, vy0 + vh + 48);
+  });
+  const sy = H - H * 0.1;
+  g.strokeStyle = "#fff";
+  g.lineWidth = 6;
+  g.beginPath();
+  g.arc(W / 2, sy, 46, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.arc(W / 2, sy, 37, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = "#2a2d33";
+  g.beginPath();
+  g.roundRect(60, sy - 28, 56, 56, 10);
+  g.fill();
+  g.beginPath();
+  g.arc(W - 88, sy, 28, 0, Math.PI * 2);
+  g.fill();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/**
+ * Smartphone with a triple camera on a raised plateau, held by a spring clamp on a crossbar between the cradle
+ * plates. The main (1×) lens sits on the optical (pointing) axis; the screen faces +z, the cameras look along -z.
+ */
+function buildPhone(M: Mats, g: THREE.Group) {
+  const { w, h, t, r } = PHONE;
+  const k = h / 0.1476; // in-plane details below were laid out for a 147.6 mm phone
+  const frame = new THREE.MeshStandardMaterial({ color: 0xa9a59c, metalness: 0.92, roughness: 0.3 });
+  const backGlass = new THREE.MeshPhysicalMaterial({ color: 0xc4bfb5, metalness: 0.05, roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.6 });
+  const plateauMat = new THREE.MeshPhysicalMaterial({ color: 0xc9c4ba, metalness: 0.05, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08 });
+  const frontGlass = new THREE.MeshPhysicalMaterial({ color: 0x050506, metalness: 0, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.03 });
+  const lensGlass = new THREE.MeshPhysicalMaterial({
+    color: 0x06080c,
+    metalness: 0.3,
+    roughness: 0.04,
+    clearcoat: 1,
+    clearcoatRoughness: 0.02,
+    iridescence: 1,
+    iridescenceIOR: 1.8,
+    iridescenceThicknessRange: [260, 520],
+  });
+  const ink = new THREE.MeshStandardMaterial({ color: 0x0a0a0b, roughness: 0.55 });
+  const pad = new THREE.MeshStandardMaterial({ color: 0x1a1b1d, roughness: 0.95 });
+
+  // Main lens position on the phone (phone coordinates); the phone is shifted so it lands on the axis.
+  const mod = { x: w / 2 - k * (0.0042 + 0.0195), y: h / 2 - k * (0.0042 + 0.0195), s: k * 0.039 };
+  const lenses: [number, number][] = [
+    [mod.x + k * 0.0088, mod.y + k * 0.0088], // main (1×), on the axis
+    [mod.x + k * 0.0088, mod.y - k * 0.0088], // ultra-wide
+    [mod.x - k * 0.0082, mod.y], // telephoto
+  ];
+  const phone = new THREE.Group();
+  phone.position.set(-lenses[0][0], -lenses[0][1], 0);
+  g.add(phone);
+
+  // Body: frame with rounded edges, frosted back glass, black front glass with the display.
+  const bevel = 0.0018;
+  // ExtrudeGeometry grows the outline by the bevel, so start from an outline inset by it.
+  const body = new THREE.ExtrudeGeometry(roundedRect(-w / 2 + bevel, -h / 2 + bevel, w / 2 - bevel, h / 2 - bevel, r - bevel), {
+    depth: t - 2 * bevel,
+    bevelEnabled: true,
+    bevelSize: bevel,
+    bevelThickness: bevel,
+    bevelSegments: 5,
+    curveSegments: 16,
+  });
+  body.translate(0, 0, -(t - 2 * bevel) / 2);
+  mesh(body, frame, phone);
+  const back = mesh(panel(w - 0.0016, h - 0.0016, r - 0.0008), backGlass, phone, 0, 0, -t / 2 - 0.00005);
+  back.rotation.y = Math.PI;
+  mesh(panel(w - 0.0012, h - 0.0012, r - 0.0006), frontGlass, phone, 0, 0, t / 2 + 0.00005);
+  const scr = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0xffffff, roughness: 0.2 });
+  scr.emissiveMap = phoneScreenTexture();
+  scr.emissiveIntensity = 0.85;
+  const screen = mesh(panel(w - 0.0044, h - 0.0044, r - 0.0022), scr, phone, 0, 0, t / 2 + 0.0001);
+  screen.name = "screen";
+  const island = mesh(new RoundedBoxGeometry(0.0125 * k, 0.0036 * k, 0.0002, 2, 0.0009), frontGlass, phone, 0, h / 2 - 0.0078 * k, t / 2 + 0.0002);
+  island.name = "island";
+
+  // Camera plateau with three lenses, flash, LiDAR and microphone.
+  const plateau = new RoundedBoxGeometry(mod.s, mod.s, 0.0016, 4, 0.0007);
+  mesh(plateau, plateauMat, phone, mod.x, mod.y, -t / 2 - 0.0006);
+  const zBack = -t / 2 - 0.0014; // plateau surface
+  const disc = (rad: number, depth: number, mat: THREE.Material, x: number, y: number, z: number, seg = 40) => {
+    const c = mesh(new THREE.CylinderGeometry(rad, rad, depth, seg), mat, phone, x, y, z - depth / 2);
+    c.rotation.x = Math.PI / 2;
+    return c;
+  };
+  for (const [x, y] of lenses) {
+    disc(0.0071 * k, 0.0016, frame, x, y, zBack); // raised ring
+    disc(0.0062 * k, 0.0017, ink, x, y, zBack);
+    const gl = mesh(new THREE.CircleGeometry(0.0049 * k, 40), lensGlass, phone, x, y, zBack - 0.00172);
+    gl.rotation.y = Math.PI; // face -z
+    const ap = mesh(new THREE.CircleGeometry(0.0019 * k, 24), ink, phone, x, y, zBack - 0.00175);
+    ap.rotation.y = Math.PI;
+  }
+  const flash = mesh(new THREE.CircleGeometry(0.0028 * k, 24), new THREE.MeshStandardMaterial({ color: 0xf2ead2, roughness: 0.35 }), phone, mod.x - k * 0.0082, mod.y + k * 0.0118, zBack - 0.00005);
+  flash.rotation.y = Math.PI;
+  const lidar = mesh(new THREE.CircleGeometry(0.0026 * k, 24), ink, phone, mod.x - k * 0.0082, mod.y - k * 0.0118, zBack - 0.00005);
+  lidar.rotation.y = Math.PI;
+  const mic = mesh(new THREE.CircleGeometry(0.0006, 12), ink, phone, mod.x - 0.0006, mod.y + 0.0004, zBack - 0.00005);
+  mic.rotation.y = Math.PI;
+
+  // Side buttons, USB-C port, speaker holes, antenna bands.
+  const btn = (x: number, y: number, len: number) => mesh(new RoundedBoxGeometry(0.0016, len, 0.0034, 2, 0.0006), frame, phone, x, y, 0);
+  btn(w / 2 + 0.0002, 0.024 * k, 0.017 * k); // side button
+  btn(-w / 2 - 0.0002, 0.047 * k, 0.0065 * k); // action button
+  btn(-w / 2 - 0.0002, 0.033 * k, 0.0095 * k); // volume up
+  btn(-w / 2 - 0.0002, 0.0205 * k, 0.0095 * k); // volume down
+  mesh(new RoundedBoxGeometry(0.0089, 0.0012, 0.0031, 2, 0.0005), ink, phone, 0, -h / 2 - 0.0001, 0);
+  for (const sx of [-1, 1])
+    for (let i = 0; i < 5; i++) mesh(new THREE.CylinderGeometry(0.00055, 0.00055, 0.0004, 10), ink, phone, sx * (0.0085 + i * 0.0021), -h / 2 - 0.0001, 0);
+  const plastic = new THREE.MeshStandardMaterial({ color: 0x8f8b84, roughness: 0.7 });
+  for (const sx of [-1, 1]) for (const y of [0.058 * k, -0.062 * k]) mesh(new THREE.BoxGeometry(0.0006, 0.0012, t * 0.62), plastic, phone, sx * (w / 2 + 0.00005), y, 0);
+  for (const y of [h / 2, -h / 2]) mesh(new THREE.BoxGeometry(0.0012, 0.0006, t * 0.62), plastic, phone, y > 0 ? -0.018 : 0.02, y + Math.sign(y) * 0.00005, 0);
+
+  // Spring clamp: centre body with two guide rods and sliding jaws (rubber pads, lips over the front edge).
+  const cy = -lenses[0][1]; // phone centre, in payload coordinates
+  const cx = -lenses[0][0];
+  const clamp = new THREE.Group();
+  clamp.position.set(cx, cy, 0);
+  g.add(clamp);
+  const zc = -t / 2 - 0.0062; // clamp body centre (behind the phone, below the camera plateau)
+  mesh(new RoundedBoxGeometry(0.034, 0.024, 0.0105, 3, 0.003), M.plastic, clamp, 0, 0, zc);
+  for (const y of [-0.0065, 0.0065]) {
+    const rodM = mesh(new THREE.CylinderGeometry(0.0016, 0.0016, w + 0.008, 16), M.alu, clamp, 0, y, zc);
+    rodM.rotation.z = Math.PI / 2;
+  }
+  const jawDepth = t + 0.0135;
+  for (const sx of [-1, 1]) {
+    const jx = sx * (w / 2 + 0.0038);
+    mesh(new RoundedBoxGeometry(0.0062, 0.026, jawDepth, 3, 0.0018), M.plastic, clamp, jx, 0, t / 2 + 0.0022 - jawDepth / 2);
+    mesh(new RoundedBoxGeometry(0.0062, 0.026, 0.0026, 2, 0.001), M.plastic, clamp, jx - sx * 0.0028, 0, t / 2 + 0.0019); // lip
+    mesh(new THREE.BoxGeometry(0.0009, 0.022, t * 0.9), pad, clamp, sx * (w / 2 + 0.0006), 0, 0); // rubber pad
+  }
+  // Mounting block around the crossbar, with a thumb screw.
+  const zBar = -0.022;
+  mesh(new RoundedBoxGeometry(0.024, 0.022, 0.017, 3, 0.003), M.plastic, clamp, 0, 0, zBar);
+  const knob = mesh(new THREE.CylinderGeometry(0.0075, 0.0075, 0.006, 24), M.alu, clamp, 0, -0.0145, zBar);
+  knob.rotation.y = 0.2;
+  cradle(M, g, 0.072, 0.064, false);
+  xCyl(0.0055, 0.2, M.alu, g, 0, cy, zBar, 20);
+}
+
 function buildPayload(shape: string, M: Mats): THREE.Group {
   const g = new THREE.Group();
   const paint = new THREE.MeshStandardMaterial({ color: 0xe9ebee, metalness: 0.1, roughness: 0.32 });
@@ -493,29 +724,8 @@ function buildPayload(shape: string, M: Mats): THREE.Group {
       lensCap(0.03 * s, -0.111 * s);
       break;
     }
-    default: {
-      // Smartphone in a spring clamp. The main camera lens sits on the optical (pointing) axis.
-      const phone = new THREE.Group();
-      phone.position.set(-0.022, -0.058, 0);
-      g.add(phone);
-      mesh(new RoundedBoxGeometry(0.075, 0.158, 0.009, 4, 0.0042), new THREE.MeshStandardMaterial({ color: 0x59606b, metalness: 0.7, roughness: 0.3 }), phone);
-      const screen = mesh(new THREE.PlaneGeometry(0.069, 0.152), new THREE.MeshStandardMaterial({ color: 0x050608, emissive: 0x0b1420, roughness: 0.15 }), phone, 0, 0, 0.0047);
-      screen.name = "screen";
-      mesh(new RoundedBoxGeometry(0.036, 0.036, 0.004, 3, 0.008), new THREE.MeshStandardMaterial({ color: 0x3a3f46, metalness: 0.5, roughness: 0.35 }), phone, 0.022, 0.058, -0.0055);
-      const main = mesh(new THREE.CylinderGeometry(0.0075, 0.0075, 0.003, 32), M.anod, phone, 0.022, 0.058, -0.008);
-      main.rotation.x = Math.PI / 2;
-      const gl = mesh(new THREE.CircleGeometry(0.0052, 32), glass, phone, 0.022, 0.058, -0.0096);
-      gl.rotation.y = Math.PI;
-      for (const [x, y] of [[0.011, 0.048], [0.011, 0.068]]) {
-        const lens = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.002, 24), M.anod, phone, x, y, -0.0075);
-        lens.rotation.x = Math.PI / 2;
-      }
-      // Spring clamp across the middle of the phone, on a crossbar between the cradle plates.
-      cradle(M, g, 0.07, 0.05, false);
-      xCyl(0.006, 0.2, M.alu, g, 0, -0.058, -0.018, 16);
-      mesh(new RoundedBoxGeometry(0.09, 0.024, 0.01, 2, 0.003), M.plastic, phone, 0, 0, -0.011);
-      for (const sx of [-1, 1]) mesh(new RoundedBoxGeometry(0.008, 0.026, 0.018, 2, 0.003), M.plastic, phone, sx * 0.0415, 0, -0.002);
-    }
+    default:
+      buildPhone(M, g);
   }
   return g;
 }
@@ -528,6 +738,7 @@ function disposeTree(o: THREE.Object3D, keep: Set<THREE.Material> = new Set()) {
       for (const m of mats) {
         if (keep.has(m)) continue;
         (m as THREE.MeshStandardMaterial).map?.dispose();
+        (m as THREE.MeshStandardMaterial).emissiveMap?.dispose();
         m.dispose();
       }
     }
@@ -574,7 +785,8 @@ export default function MountView() {
     controls.target.set(0, 0.62, 0);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI * 0.55;
-    controls.minDistance = 0.45;
+    controls.minDistance = 0.12; // close enough to inspect the payload
+    controls.zoomToCursor = true;
     controls.maxDistance = 6;
 
     scene.add(new THREE.HemisphereLight(0xcfdcff, 0x1c1712, 0.45));

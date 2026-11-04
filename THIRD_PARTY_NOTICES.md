@@ -3,6 +3,7 @@
 | Component | Use | License |
 |---|---|---|
 | d3-celestial data (Olaf Frohn) | Star positions/magnitudes/names, constellation lines, Messier list → `backend/openskymount/data/catalog.json` (converted by `scripts/build_catalog.py`) | BSD-3-Clause, full text in `backend/openskymount/data/LICENSE.d3-celestial` |
+| Milky Way Outline Catalog (Jose R. Vieira), as `mw.json` in the d3-celestial package | Milky Way band in the sky map → `frontend/src/sky/milkyway.png` (rasterised by `scripts/build_milkyway.py`) | BSD-3-Clause (d3-celestial), same license file |
 | Hipparcos, the New Reduction (van Leeuwen 2007, ESA; CDS I/311), taken from the MIT-licensed PyPI package `hipparcos-catalog` | Star astrometry: positions, proper motions, parallaxes (merged into `catalog.json`) | Public ESA scientific data |
 | JPL DE421 ephemeris (via `skyfield-data`) | Planet/Sun/Moon positions | Public domain (NASA/JPL); skyfield-data is MIT |
 | Skyfield, jplephem, sgp4 | Astronomy computations | MIT |

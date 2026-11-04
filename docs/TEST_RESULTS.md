@@ -1,6 +1,6 @@
 # Test results
 
-Last full run: 2026-11-03 (session 6), Linux cloud container, Python 3.13, Node 22, **without** the optional extras
+Last full run: 2026-11-04 (session 7), Linux cloud container, Python 3.13, Node 22, **without** the optional extras
 (Astropy, cedar-solve; their 8 tests skipped, they run in CI's 3.13 job). Versions are listed in `backend/requirements.lock.txt` and
 `frontend/package-lock.json`. The same checks run in GitHub Actions on every push (`.github/workflows/ci.yml`):
 backend on Python 3.11 (without extras) and 3.13 (with extras), frontend, and browser E2E.
@@ -11,7 +11,7 @@ backend on Python 3.11 (without extras) and 3.13 (with extras), frontend, and br
 | Types (mypy) | `cd backend && mypy openskymount` | pass (27 files) |
 | Backend tests | `cd backend && pytest -q` | **118 passed, 8 skipped** in ~60 s without the optional extras (session 5 with extras: 119 passed, 0 skipped, before the 13 new tests) |
 | Frontend types | `cd frontend && npx tsc -p tsconfig.json` | pass |
-| Frontend unit | `cd frontend && npx vitest run` | **24 passed** (projection math, Earth-rotation extrapolation, formatting, fixed-width readouts, angle formats, time-zone round trip incl. DST, exposure planner, gamepad mapping and dead-man refresh, telemetry parsing/statistics/CSV) |
+| Frontend unit | `cd frontend && npx vitest run` | **33 passed** (projection math, sky rendering: Milky Way map vs galactic coordinates, sky colour model, Moon bright limb; Earth-rotation extrapolation, formatting, fixed-width readouts, angle formats, time-zone round trip incl. DST, exposure planner, gamepad mapping and dead-man refresh, telemetry parsing/statistics/CSV) |
 | Browser E2E | `node frontend/e2e/smoke.cjs` (headless Chromium, desktop + phone viewport) | **pass** (tonight list, search, exposure planner, display options, GoTo, two-client sync, Sync → alignment, E-STOP) |
 | Browser E2E (both scripts) | `scripts/e2e.sh` (builds the UI, starts both servers, waits for `/api/health`) | **pass** |
 | Browser E2E, password mode | `node frontend/e2e/auth.cjs` (server with `OPENSKYMOUNT_PASSWORD`) | **pass** (login screen, E-STOP without login, wrong password, catalog loads after login, reload keeps session, logout) |

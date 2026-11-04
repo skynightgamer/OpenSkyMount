@@ -38,6 +38,7 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   altaz: "Alt-az grid",
   equatorial: "Equatorial grid",
   dsos: "Messier",
+  milkyway: "Milky Way",
 };
 
 function Login() {
@@ -108,7 +109,7 @@ function Main() {
   useGamepad(canMove, MANUAL_SPEEDS);
   const [settings, setSettings] = useState(false);
   const [follow, setFollow] = useState(false);
-  const [layers, setLayers] = useState<Layers>({ constellations: true, labels: true, altaz: true, equatorial: false, dsos: true });
+  const [layers, setLayers] = useState<Layers>({ constellations: true, labels: true, altaz: true, equatorial: false, dsos: true, milkyway: true });
   const conn = useStore((s) => s.connection);
   const site = useStore((s) => s.config?.config.observer);
   const caps = useStore((s) => s.config?.capabilities);
