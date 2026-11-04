@@ -95,7 +95,11 @@ const FAKE_PAD = () => {
   await a.locator(".log-list li").first().getByRole("button", { name: "Replay" }).click();
   await waitText(a, "table.stats", /sat:25544/);
   console.log("Replay stats:\n" + (await a.locator("table.stats").innerText()));
-  await a.locator(".replay input[type=range]").fill(String(await a.locator(".replay input[type=range]").getAttribute("max")));
+  // Scrub to the end with the keyboard (Playwright's fill() does not accept range inputs in every version).
+  const slider = a.locator(".replay input[type=range]");
+  await slider.focus();
+  await slider.press("End");
+  await waitText(a, ".replay-read", /Capella|hip:24608/);
   await a.screenshot({ path: `${shots}/replay.png` });
   await a.locator(".replay").getByRole("button", { name: "Close" }).click();
 
