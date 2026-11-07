@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-07 (session 8)._ Main branch: `main` (sessions 6 and 7 merged). Session 8 work on branch `feat/ui-control-panel`, not merged yet.
+_Last updated: 2026-11-07 (session 8)._ Main branch: `main` (sessions 6, 7 and 8 merged; session 8 from `feat/ui-control-panel`).
 
 ## Milestones
 
