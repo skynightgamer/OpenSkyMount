@@ -20,6 +20,7 @@ import {
   type View,
 } from "./projection";
 import { drawSkyBackground, glowSprite, hexRgb, limbAngle, moonLitPath, SPRITE_CORE, type SkyLight } from "./skyrender";
+import { Icon } from "../components/Icon";
 
 interface Catalog {
   stars: [number, number, number, number, number, string][];
@@ -315,11 +316,21 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     <div className="sky-wrap" ref={wrapRef}>
       <canvas ref={canvasRef} className="sky-canvas" aria-label="Sky map. Drag to pan, scroll or pinch to zoom, click an object to select it." />
       <div className="sky-tools">
-        <button onClick={() => zoom(0.7)} aria-label="Zoom in">＋</button>
-        <button onClick={() => zoom(1.4)} aria-label="Zoom out">－</button>
-        {(["N", "E", "S", "W"] as const).map((d, i) => (
-          <button key={d} onClick={() => face(i * 90)} aria-label={`Face ${d}`}>{d}</button>
-        ))}
+        <div className="toolgroup">
+          <button onClick={() => zoom(0.7)} aria-label="Zoom in" title="Zoom in">
+            <Icon name="plus" />
+          </button>
+          <button onClick={() => zoom(1.4)} aria-label="Zoom out" title="Zoom out">
+            <Icon name="minus" />
+          </button>
+        </div>
+        <div className="toolgroup">
+          {(["N", "E", "S", "W"] as const).map((d, i) => (
+            <button key={d} onClick={() => face(i * 90)} aria-label={`Face ${d}`} title={`Face ${d}`}>
+              {d}
+            </button>
+          ))}
+        </div>
       </div>
       {hover && <div className="sky-hover">{hoverLabel(hover, catRef.current, frameRef.current?.f)}</div>}
     </div>

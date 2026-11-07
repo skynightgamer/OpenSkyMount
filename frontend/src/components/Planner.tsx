@@ -91,12 +91,14 @@ export function TonightList() {
                 : "no astronomical darkness"}
         </span>
       </div>
-      <div className="tonight-filters" role="radiogroup" aria-label="Object type">
-        {KINDS.map(([k, label]) => (
-          <button key={k} className={kind === k ? "sel" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>
-            {label}
-          </button>
-        ))}
+      <div className="tonight-filters">
+        <div className="seg" role="radiogroup" aria-label="Object type">
+          {KINDS.map(([k, label]) => (
+            <button key={k} className={kind === k ? "sel" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
         <label title="Only list objects that climb at least this high while it is dark">
           above
           <select id="tonight-minalt" value={minAlt} onChange={(e) => setMinAlt(Number(e.target.value))}>

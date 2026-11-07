@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, timeZones, toZonedInput, zoneLabel } from "../format";
+import { Icon, type IconName } from "./Icon";
 import { ExposurePlanner, TonightList } from "./Planner";
 import { SatellitePasses } from "./Session";
 import {
@@ -338,7 +339,7 @@ function Authority() {
         </>
       ) : (
         <>
-          <span>View only: nobody has control</span>
+          <span>View only</span>
           <button className="primary" onClick={() => requestControl(false)}>
             Take control
           </button>
@@ -427,13 +428,15 @@ export function MotionPanel() {
         </button>
       </div>
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} />
-      <div className="speed" role="radiogroup" aria-label="Manual speed">
+      <div className="speed">
         <span>Speed</span>
-        {MANUAL_SPEEDS.map((s) => (
-          <button key={s} className={speed === s ? "sel" : ""} onClick={() => setState({ manualSpeed: s })} aria-pressed={speed === s}>
-            {s}°/s
-          </button>
-        ))}
+        <div className="seg" role="radiogroup" aria-label="Manual speed">
+          {MANUAL_SPEEDS.map((s) => (
+            <button key={s} className={speed === s ? "sel" : ""} onClick={() => setState({ manualSpeed: s })} aria-pressed={speed === s}>
+              {s}°/s
+            </button>
+          ))}
+        </div>
       </div>
       <p className="hint gamepad-hint" title="Gamepad: hold LB or RB and use the left stick or D-pad; B = Stop, Back/View = E-STOP, Y/X = speed">
         {pad.id
@@ -463,7 +466,7 @@ export function ManualPad({ enabled, speed, big = false }: { enabled: boolean; s
   };
   useEffect(() => end, []);
   // Arrow = direction on the sky as seen from behind the mount: up/down in altitude, azimuth + turns right (east of north).
-  const btn = (arrow: string, axis: string, dAlt: number, dAz: number, cls: string, name: string) => (
+  const btn = (arrow: IconName, axis: string, dAlt: number, dAz: number, cls: string, name: string) => (
     <button
       className={`pad ${cls}`}
       disabled={!enabled}
@@ -477,22 +480,22 @@ export function ManualPad({ enabled, speed, big = false }: { enabled: boolean; s
       aria-label={`${name} (${axis})`}
       title={`Hold to move ${name} (${axis})`}
     >
-      <span className="arrow" aria-hidden>
-        {arrow}
+      <span className="arrow">
+        <Icon name={arrow} size={big ? 26 : 18} />
       </span>
       <small>{axis}</small>
     </button>
   );
   return (
     <div className={`manual${big ? " big" : ""}`} aria-label="Manual slew (press and hold)">
-      {btn("▲", "Alt +", 1, 0, "up", "up")}
-      {btn("◀", "Az −", 0, -1, "left", "left")}
+      {btn("up", "Alt +", 1, 0, "up", "up")}
+      {btn("left", "Az −", 0, -1, "left", "left")}
       <div className="pad-center">
         <span>{speed}°/s</span>
         <small>hold to move</small>
       </div>
-      {btn("▶", "Az +", 0, 1, "right", "right")}
-      {btn("▼", "Alt −", -1, 0, "down", "down")}
+      {btn("right", "Az +", 0, 1, "right", "right")}
+      {btn("down", "Alt −", -1, 0, "down", "down")}
     </div>
   );
 }
@@ -524,7 +527,7 @@ export function ClockPanel() {
       </div>
       {warp && (
         <>
-          <div className="row wrap clock-rates" role="group" aria-label="Clock speed">
+          <div className="seg clock-rates" role="group" aria-label="Clock speed">
             <button disabled={!ctl || clock?.live} className={clock?.live ? "sel" : ""} onClick={() => command("set_clock", { live: true })} title="Back to the real current time">
               Live
             </button>

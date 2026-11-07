@@ -654,12 +654,14 @@ export function HandController() {
         </button>
       )}
       <ManualPad enabled={ctl && !latched} speed={Math.min(speed, maxRate)} big />
-      <div className="speed" role="radiogroup" aria-label="Manual speed">
-        {MANUAL_SPEEDS.map((s) => (
-          <button key={s} className={speed === s ? "sel" : ""} onClick={() => setState({ manualSpeed: s })} aria-pressed={speed === s}>
-            {s}°/s
-          </button>
-        ))}
+      <div className="speed">
+        <div className="seg" role="radiogroup" aria-label="Manual speed">
+          {MANUAL_SPEEDS.map((s) => (
+            <button key={s} className={speed === s ? "sel" : ""} onClick={() => setState({ manualSpeed: s })} aria-pressed={speed === s}>
+              {s}°/s
+            </button>
+          ))}
+        </div>
       </div>
       {session && session.items.length > 0 && (
         <div className="hand-session">
