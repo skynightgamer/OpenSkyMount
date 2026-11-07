@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ClockPanel,
-  ControlAuthority,
+  ControlHeader,
   EventLog,
   MotionPanel,
   SearchPanel,
@@ -181,7 +181,7 @@ function Main() {
           {caps?.simulated && <div className="sim-note">Simulated mount. Real hardware behaviour is not verified.</div>}
         </section>
         <section className="col control-col">
-          <ControlAuthority />
+          <ControlHeader />
           <TargetPanel />
           <MotionPanel />
           <SessionPanel />

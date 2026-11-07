@@ -47,6 +47,7 @@ const FAKE_PAD = () => {
   await waitText(a, ".conn", /Simulator connected/);
   await a.getByRole("button", { name: "Take control" }).click();
   await waitText(a, ".authority", /You have control/);
+  await a.locator(".clock summary").click(); // collapsed by default
   await a.fill('.clock input[type="datetime-local"]', "2014-01-21T03:20");
   await waitText(a, ".clock-read", /03:20/);
 
@@ -71,7 +72,7 @@ const FAKE_PAD = () => {
   await a.fill('input[type="search"]', "Capella");
   await a.locator(".hits button").first().click();
   await waitText(a, ".target h2", /Capella/);
-  await a.locator(".target").getByRole("button", { name: "+ Session" }).click();
+  await a.locator(".target").getByRole("button", { name: "Add to session" }).click();
   await waitText(a, ".queue", /Capella/);
   await a.screenshot({ path: `${shots}/session-queue.png` });
 

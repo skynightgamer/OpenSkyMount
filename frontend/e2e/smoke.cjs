@@ -36,6 +36,7 @@ async function waitText(page, selector, re, timeout = 30000) {
   // Window A takes control and moves the simulated clock to a night when Jupiter is up.
   await a.getByRole("button", { name: "Take control" }).click();
   await waitText(a, ".authority", /You have control/);
+  await a.locator(".clock summary").click(); // collapsed by default
   await a.fill('.clock input[type="datetime-local"]', "2026-11-01T02:00");
   await a.getByRole("button", { name: "×10" }).click();
   await waitText(a, ".clock-read", /simulated ×10/);
@@ -70,6 +71,12 @@ async function waitText(page, selector, re, timeout = 30000) {
   await waitText(a, ".target > dl", /RA \(J2000\)\s*\d\dh \d\dm/);
   await a.getByRole("button", { name: "GoTo & track" }).click();
   await waitText(a, ".telemetry .mode", /Slewing|Tracking/);
+  await waitText(a, ".control-head .status", /Jupiter/);
+  // The E-STOP/Stop head of the control column stays on screen while the column scrolls.
+  await a.locator(".control-col").evaluate((c) => (c.scrollTop = c.scrollHeight));
+  const estopBox = await a.locator(".control-head .estop").boundingBox();
+  if (!estopBox || estopBox.y < 0 || estopBox.y + estopBox.height > 900) throw new Error("E-STOP scrolled out of view");
+  await a.locator(".control-col").evaluate((c) => (c.scrollTop = 0));
 
   // Window B (phone layout) observes the same mount state.
   await b.getByRole("tab", { name: "Control" }).click();
@@ -99,6 +106,10 @@ async function waitText(page, selector, re, timeout = 30000) {
   await a.getByRole("button", { name: /Reset/ }).click();
   await waitText(a, ".telemetry .mode", /Idle/);
   await a.getByRole("button", { name: "Live" }).click();
+  // Opened/closed sections are remembered on this device.
+  await a.reload();
+  await a.waitForSelector("details.clock[open]");
+  if (await a.locator("details.alignment[open]").count()) throw new Error("alignment section should stay collapsed");
 
   await browser.close();
   if (errors.length) {

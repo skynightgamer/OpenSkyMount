@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-04 (session 6)._ Main branch: `main` (session 6 work merged from `claude/observing-sessions-target-queue-n9s0w1`).
+_Last updated: 2026-11-07 (session 8)._ Main branch: `main` (sessions 6 and 7 merged). Session 8 work on branch `feat/ui-control-panel`, not merged yet.
 
 ## Milestones
 
@@ -106,3 +106,21 @@ _Last updated: 2026-11-04 (session 6)._ Main branch: `main` (session 6 work merg
   **Not verified**: frame rate on a real phone.
   Follow-up: phone enlarged to the largest current class (6.9″, 163 × 77.6 × 8.25 mm); camera plateau, lenses and
   buttons scale with it.
+- **Session 8 (2026-11-07)**: user feedback: make the UI more intuitive, especially the right (control) column (branch
+  `feat/ui-control-panel`, D43). (1) **Sticky control head**: control authority ("View only: nobody has control" is
+  highlighted), a live status line (mode, target, pointing error), E-STOP and Stop. They stay on screen while the column
+  scrolls (also on the phone Control tab). While E-STOP/fault/disconnect is latched, a red banner says why motion is
+  blocked and holds the Reset button. (2) **Collapsible sections** with a one-line summary in every header (target name,
+  speed, "2 targets · running", "not aligned" / "3 points · 12″ RMS", clock time and rate, objects loaded, recording,
+  latest log message); open/closed remembered per device. Target, Move and Observing session open by default; the whole
+  column fits on one screen when the others are collapsed (was ~1660 px). (3) **Target**: warnings and the GoTo/Sync/Add
+  buttons come before the data table; altitude, azimuth and rise/transit/set lead the table; below-horizon objects say
+  when they rise; a hint says to take control when buttons are disabled for that reason; "+ Session" became "Add to
+  session". (4) **Move**: Start/Stop tracking merged into one button that names the target ("Track Jupiter"); manual pad
+  shows arrows with the axis underneath; E-STOP/Stop/Reset moved to the head. (5) **Observing session**: actions only
+  appear when they apply (no row of disabled buttons on an empty queue); secondary actions as text links. (6) **Time**:
+  "Live" highlighted when live, "Jump to" label, note that time warp is simulator-only.
+  E2E scripts updated (Time section collapsed by default, renamed button) and extended: E-STOP stays in view after
+  scrolling the column; section state survives a reload. 118 backend tests (8 skipped, optional extras not installed),
+  33 frontend unit tests and all three browser E2E scripts pass (macOS, Python 3.15, local Playwright 1.48 + Chromium).
+  **Not verified**: on a real phone, with a screen reader.

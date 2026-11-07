@@ -11,6 +11,7 @@ import {
 } from "../sky/exposure";
 import { formatTime } from "../format";
 import { command, isController, select, simNow, toast, useStore } from "../store";
+import { Section } from "./Panels";
 
 
 // ------------------------------------------------------------------ tonight
@@ -232,11 +233,10 @@ export function AlignmentPanel() {
   const n = model.points.length;
   const arc = (deg: number | null) => (deg == null ? "—" : deg < 1 / 60 ? `${(deg * 3600).toFixed(0)}″` : `${(deg * 60).toFixed(1)}′`);
   return (
-    <section className="panel alignment">
-      <h3 className="label">Alignment</h3>
+    <Section id="alignment" title="Alignment" summary={n === 0 ? "not aligned" : `${n} point${n > 1 ? "s" : ""}${n > 1 && model.rms != null ? ` · ${arc(model.rms)} RMS` : ""}`}>
       <p className="align-help">
         {n === 0
-          ? "Centre a star in the payload, then press Sync on it. One star fixes the zero offsets; three or more spread around the sky also correct a tilted base."
+          ? "Centre a star in the payload, then press Sync in the Target section. One star fixes the zero offsets; three or more spread around the sky also correct a tilted base."
           : n < model.tilt_min_points
             ? `${n} point${n > 1 ? "s" : ""}: zero offsets corrected. Add ${model.tilt_min_points - n} more, spread in azimuth, to correct base tilt.`
             : `${n} points: zero offsets and base tilt corrected.`}
@@ -292,6 +292,6 @@ export function AlignmentPanel() {
           Clear model
         </button>
       </div>
-    </section>
+    </Section>
   );
 }
