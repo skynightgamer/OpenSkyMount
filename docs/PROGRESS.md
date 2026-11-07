@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7 and 8 merged; session 9 on `feat/ui-polish`, not merged yet).
+_Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7, 8 and 9 merged; session 9 from `feat/ui-polish`).
 
 ## Milestones
 
