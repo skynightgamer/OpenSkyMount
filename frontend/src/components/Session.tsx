@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fixedAngle, formatDateTime, formatTime, fromZonedInput, toZonedInput } from "../format";
 import { type Recording, parseRecording, sampleIndexAt, toCsv, trackingStats } from "../replay";
 import { MANUAL_SPEEDS, type QueueItem, command, getState, isController, requestControl, setState, simNow, toast, useStore } from "../store";
-import { ManualPad } from "./Panels";
+import { ManualPad, Section } from "./Panels";
 
 const EMPTY: never[] = [];
 
@@ -38,6 +38,7 @@ export function SessionPanel() {
   const [record, setRecord] = useState(true);
   const items = session?.items ?? EMPTY;
   const open = items.filter((i) => !["done", "skipped"].includes(i.status)).length;
+  const finished = items.length - open;
   const add = () => {
     if (!selected) return;
     const startAt = start ? fromZonedInput(start, tz) : null;
@@ -45,74 +46,96 @@ export function SessionPanel() {
       (a) => a.ok && toast(String(a.message)),
     );
   };
+  const state = session?.running ? "running" : items.length ? "stopped" : "empty";
   return (
-    <section className="panel session">
-      <h3 className="label">
-        Observing session{" "}
-        <span className={`badge ${session?.running ? "on" : ""}`}>{session?.running ? "running" : items.length ? "stopped" : "empty"}</span>
-      </h3>
+    <Section
+      id="session"
+      title="Observing session"
+      defaultOpen
+      summary={
+        <>
+          {items.length > 0 && (finished ? `${finished}/${items.length} done ` : `${items.length} target${items.length > 1 ? "s" : ""} `)}
+          <span className={`badge ${session?.running ? "on" : ""}`}>{state}</span>
+        </>
+      }
+    >
       {items.length === 0 ? (
-        <p className="hint">Add targets with “+ Session” in the target panel, or below. The mount then works through the list: GoTo, track for the set time, next.</p>
+        <p className="hint">
+          A list of targets the mount works through on its own: GoTo, track for the set time, then the next one. Select an object and press “Add to session”.
+        </p>
       ) : (
-        <ol className="queue">
-          {items.map((it, i) => (
-            <li key={it.id} className={`q-${it.status}${session?.current === it.id ? " current" : ""}`}>
-              <div className="q-main">
-                <button className="link" onClick={() => setState({ selectedId: it.target })} title="Select on the sky map">
-                  {it.name}
+        <>
+          <ol className="queue">
+            {items.map((it, i) => (
+              <li key={it.id} className={`q-${it.status}${session?.current === it.id ? " current" : ""}`}>
+                <div className="q-main">
+                  <button className="link" onClick={() => setState({ selectedId: it.target })} title="Select on the sky map">
+                    {it.name}
+                  </button>
+                  <small>
+                    {it.start_at != null ? `from ${formatTime(it.start_at, tz)} · ` : ""}
+                    {duration(it.duration_s)}
+                    {session?.current === it.id && session.remaining_s != null ? ` · ${duration(session.remaining_s)} left` : ""}
+                    {it.message ? ` · ${it.message}` : ""}
+                  </small>
+                </div>
+                <span className={`q-status`}>{STATUS_LABEL[it.status]}</span>
+                <span className="q-tools">
+                  <button disabled={!ctl || i === 0} onClick={() => command("queue_move", { id: it.id, delta: -1 })} aria-label={`Move ${it.name} up`} title="Move up">
+                    ↑
+                  </button>
+                  <button disabled={!ctl || session?.current === it.id} onClick={() => command("queue_remove", { id: it.id })} aria-label={`Remove ${it.name}`} title="Remove">
+                    ×
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="row">
+            {session?.running ? (
+              <>
+                <button disabled={!ctl} onClick={() => command("queue_pause")} title="Stop working through the list (the mount keeps tracking)">
+                  Pause
                 </button>
-                <small>
-                  {it.start_at != null ? `from ${formatTime(it.start_at, tz)} · ` : ""}
-                  {duration(it.duration_s)}
-                  {session?.current === it.id && session.remaining_s != null ? ` · ${duration(session.remaining_s)} left` : ""}
-                  {it.message ? ` · ${it.message}` : ""}
-                </small>
-              </div>
-              <span className={`q-status`}>{STATUS_LABEL[it.status]}</span>
-              <span className="q-tools">
-                <button disabled={!ctl || i === 0} onClick={() => command("queue_move", { id: it.id, delta: -1 })} aria-label={`Move ${it.name} up`}>
-                  ↑
+                <button disabled={!ctl || !session.current} onClick={() => command("queue_skip")} title="End the current target and go to the next">
+                  Skip
                 </button>
-                <button disabled={!ctl || session?.current === it.id} onClick={() => command("queue_remove", { id: it.id })} aria-label={`Remove ${it.name}`}>
-                  ×
-                </button>
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
-      <div className="row wrap">
-        {session?.running ? (
-          <>
-            <button disabled={!ctl} onClick={() => command("queue_pause")} title="Stop working through the list (the mount keeps tracking)">
-              Pause
+              </>
+            ) : open > 0 ? (
+              <button className="primary" disabled={!ctl} onClick={() => command("queue_start", { record: record && !recording })}>
+                Start session
+              </button>
+            ) : (
+              <button className="primary" disabled={!ctl} onClick={() => command("queue_reset")} title="Mark all items pending again">
+                Run again
+              </button>
+            )}
+          </div>
+          {!session?.running && open > 0 && (
+            <label className="inline-check">
+              <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} /> Record telemetry while the session runs
+            </label>
+          )}
+          <div className="text-actions">
+            {open > 0 && finished > 0 && (
+              <button className="link" disabled={!ctl || session?.running} onClick={() => command("queue_reset")} title="Mark all items pending again">
+                Run all again
+              </button>
+            )}
+            {finished > 0 && (
+              <button className="link" disabled={!ctl} onClick={() => command("queue_clear", { finished_only: true })}>
+                Clear finished
+              </button>
+            )}
+            <button className="link" disabled={!ctl || session?.running} onClick={() => confirm("Remove all targets from the session?") && command("queue_clear")}>
+              Clear all
             </button>
-            <button disabled={!ctl || !session.current} onClick={() => command("queue_skip")}>
-              Skip
-            </button>
-          </>
-        ) : (
-          <button className="primary" disabled={!ctl || open === 0} onClick={() => command("queue_start", { record: record && !recording })}>
-            Start session
-          </button>
-        )}
-        <button disabled={!ctl || session?.running || items.length === 0} onClick={() => command("queue_reset")} title="Mark all items pending again">
-          Run again
-        </button>
-        <button disabled={!ctl || items.every((i) => i.status !== "done" && i.status !== "skipped")} onClick={() => command("queue_clear", { finished_only: true })}>
-          Clear finished
-        </button>
-        <button disabled={!ctl || session?.running || items.length === 0} onClick={() => confirm("Remove all targets from the session?") && command("queue_clear")}>
-          Clear all
-        </button>
-      </div>
-      {!session?.running && (
-        <label className="inline-check">
-          <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} /> Record telemetry while the session runs
-        </label>
+          </div>
+          <p className="hint">Any other motion command (GoTo, Stop, E-STOP, manual slew) pauses the session; it never restarts by itself.</p>
+        </>
       )}
       <details className="sub-details">
-        <summary>Add the selected target with options</summary>
+        <summary>Add with a custom time or start time…</summary>
         <div className="q-add">
           <label>
             <span>Track for (min)</span>
@@ -129,13 +152,12 @@ export function SessionPanel() {
             <button onClick={() => setStart(toZonedInput(simNow(), tz))}>Now</button>
             <button onClick={() => setStart("")}>No start time</button>
             <button className="primary" disabled={!ctl || !selected} onClick={add}>
-              Add {selected ? "selected" : "(select a target)"}
+              {selected ? "Add selected" : "Select a target"}
             </button>
           </div>
         </div>
       </details>
-      <p className="hint">Any other motion command (GoTo, Stop, E-STOP, manual slew) pauses the session; it never restarts by itself.</p>
-    </section>
+    </Section>
   );
 }
 
@@ -241,8 +263,7 @@ export function OrbitsPanel() {
     else setState({ orbitsRevision: getState().orbitsRevision + 1 });
   };
   return (
-    <details className="panel orbits">
-      <summary className="label">Satellites, comets &amp; asteroids ({objs.length})</summary>
+    <Section id="orbits" title="Satellites & comets" summary={objs.length ? `${objs.length} loaded` : "none loaded"}>
       <p className="hint">
         Paste element sets: TLEs for satellites (e.g. CelesTrak “stations”), or MPC one-line orbits (CometEls.txt, MPCORB.DAT lines). Nothing is downloaded by
         OpenSkyMount; elements are stored on the server. Comets/asteroids are two-body orbits; TLEs go stale within days to weeks.
@@ -282,7 +303,7 @@ export function OrbitsPanel() {
           ))}
         </ul>
       )}
-    </details>
+    </Section>
   );
 }
 
@@ -314,8 +335,7 @@ export function LogsPanel() {
     setReplay({ name, rec: parseRecording(await r.text()) });
   };
   return (
-    <details className="panel logs" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
-      <summary className="label">Telemetry recordings{rec?.active ? " · recording" : ""}</summary>
+    <Section id="logs" title="Recordings" onOpenChange={setOpen} summary={rec?.active ? <span className="rec-on">● recording</span> : logs.length ? `${logs.length} saved` : undefined}>
       <div className="row">
         {rec?.active ? (
           <button className="warnbtn" disabled={!ctl} onClick={() => command("record_stop")}>
@@ -354,7 +374,7 @@ export function LogsPanel() {
         {logs.length === 0 && <li className="hint">No recordings yet.</li>}
       </ul>
       {replay && <ReplayViewer name={replay.name} rec={replay.rec} onClose={() => setReplay(null)} />}
-    </details>
+    </Section>
   );
 }
 

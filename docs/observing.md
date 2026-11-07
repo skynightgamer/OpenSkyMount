@@ -7,13 +7,14 @@ has been tried on real hardware.
 
 A list of targets the mount works through on its own: GoTo, track for a set time, next.
 
-* Add targets with **+ Session** in the target panel (10 minutes of tracking), from a satellite's pass list (start at
-  the pass's rise, track until it sets), or with **Add the selected target with options** in the Session panel:
+* Add targets with **Add to session** in the Target section (10 minutes of tracking), from a satellite's pass list
+  (**+ Session**: start at the pass's rise, track until it sets), or with **Add with a custom time or start time…** in
+  the Observing session section:
   tracking time, *until the next item's start time*, and an optional start time (the mount waits, still tracking the
   previous target, until then).
 * **Start session** works through the items in order. **Pause** stops working through the list (the mount keeps
-  tracking), **Skip** ends the current item. **Run again** marks all items pending; **Clear finished**/**Clear all**
-  tidy up. The queue is stored in `state/queue.json` and survives a restart (an item that was running is shown as
+  tracking), **Skip** ends the current item. **Run again** / **Run all again** marks all items pending;
+  **Clear finished**/**Clear all** tidy up (the buttons only appear when they apply). The queue is stored in `state/queue.json` and survives a restart (an item that was running is shown as
   *interrupted*).
 * Every GoTo goes through the normal controller checks. An item whose GoTo is refused (below the altitude limit,
   Sun exclusion zone, unreachable) is marked *skipped* with the reason and the session continues.
@@ -74,7 +75,7 @@ files, `GET /api/logs/<name>` downloads one, `DELETE /api/logs/<name>` removes i
 ## Gamepad
 
 Any controller the browser exposes through the Gamepad API (standard layout: Xbox, PlayStation, many Bluetooth
-pads). Press a button once so the browser makes it visible; the Motion panel shows its name.
+pads). Press a button once so the browser makes it visible; the Move section shows its name.
 
 | Control | Action |
 |---|---|
