@@ -9,7 +9,7 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 import { getState, useStore } from "../store";
 
 const DEG = Math.PI / 180;
-const BG = 0x17191c;
+const BG = 0x0f141c; // matches --bg in styles.css
 const AZ_HEIGHT = 0.52; // top of the fixed azimuth base
 const ALT_HEIGHT = 0.29; // altitude axis above the azimuth stage
 const ARM_X = 0.13; // fork arm centre plane
@@ -161,8 +161,8 @@ function groundTexture(): THREE.CanvasTexture {
   return canvasTexture(2048, (g, c) => {
     const px = c / 3; // pixels per metre
     const grad = g.createRadialGradient(c, c, 0, c, c, c);
-    grad.addColorStop(0, "#26292d");
-    grad.addColorStop(1, "#17191c");
+    grad.addColorStop(0, "#232934");
+    grad.addColorStop(1, "#0f141c");
     g.fillStyle = grad;
     g.fillRect(0, 0, 2 * c, 2 * c);
     g.strokeStyle = "rgba(255,255,255,0.10)";

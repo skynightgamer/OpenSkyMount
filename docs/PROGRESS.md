@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-07 (session 8)._ Main branch: `main` (sessions 6, 7 and 8 merged; session 8 from `feat/ui-control-panel`).
+_Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7 and 8 merged; session 9 on `feat/ui-polish`, not merged yet).
 
 ## Milestones
 
@@ -124,3 +124,16 @@ _Last updated: 2026-11-07 (session 8)._ Main branch: `main` (sessions 6, 7 and 8
   scrolling the column; section state survives a reload. 118 backend tests (8 skipped, optional extras not installed),
   33 frontend unit tests and all three browser E2E scripts pass (macOS, Python 3.15, local Playwright 1.48 + Chromium).
   **Not verified**: on a real phone, with a screen reader.
+- **Session 9 (2026-11-07)**: user feedback: make the UI more beautiful; drop "nobody has control" (branch `feat/ui-polish`,
+  D44). Restyle only, no behaviour changes. (1) **Palette**: blue-black night colours that match the sky map instead of
+  neutral greys; 3D view background and ground disc re-tinted to match. (2) **Frame**: sky, mount, control and status bar
+  are rounded panes on a darker backdrop; top bar with a logo mark, location pin, connection pill and icon buttons (labels
+  hidden below 1000 px; accessible names unchanged). (3) **Views**: sky-map zoom/compass buttons and the 3D legend as
+  translucent overlay groups; sky layers as chip toggles (still checkboxes); search field with an icon and a floating
+  results list. (4) **Controls**: segmented controls for manual speed, clock rate and the "Best tonight" filter; manual
+  pad on a base plate with chevron icons; section chevrons moved to the right of the summary; mode dots in the control
+  head and status bar; target warnings as a callout, horizon state as a pill; modal, toasts and login restyled.
+  (5) Authority line now reads "View only" when nobody holds control ("View only: <name> has control" unchanged).
+  118 backend tests (8 skipped, optional extras not installed), tsc and 33 frontend unit tests pass; checked by eye in
+  the in-app browser at 1440 × 900 and phone width. **Not run**: browser E2E scripts (no Playwright browser set up this
+  session; selectors and button names were kept). README screenshots (`docs/img`) still show the session 8 styling.

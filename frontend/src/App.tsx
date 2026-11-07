@@ -9,6 +9,7 @@ import {
   TargetPanel,
   Telemetry,
 } from "./components/Panels";
+import { Icon, Logo } from "./components/Icon";
 import { AlignmentPanel } from "./components/Planner";
 import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
 import { useGamepad } from "./gamepad";
@@ -57,7 +58,10 @@ function Login() {
           setBusy(false);
         }}
       >
-        <h1>OpenSkyMount</h1>
+        <h1>
+          <Logo size={24} />
+          OpenSkyMount
+        </h1>
         <p>This mount is password protected.</p>
         <label>
           <span>Password</span>
@@ -137,22 +141,36 @@ function Main() {
   return (
     <div className={`app tab-${tab}`}>
       <header className="topbar">
-        <div className="brand">OpenSkyMount</div>
+        <div className="brand">
+          <Logo />
+          <span>OpenSkyMount</span>
+        </div>
         <div className="site" title="Observer location">
-          {site ? `${site.name} · ${site.latitude.toFixed(3)}°, ${site.longitude.toFixed(3)}°` : "…"}
+          <Icon name="pin" size={14} />
+          <span>{site ? `${site.name} · ${site.latitude.toFixed(3)}°, ${site.longitude.toFixed(3)}°` : "…"}</span>
         </div>
         <div className={`conn conn-${conn}`}>{conn === "open" ? (caps?.simulated ? "Simulator connected" : caps?.name) : conn}
           {conn === "open" && latency != null && <span className="latency">{latency.toFixed(0)} ms</span>}</div>
-        <button className={`hand-toggle${tab === "hand" ? " sel" : ""}`} onClick={() => setTab(tab === "hand" ? "sky" : "hand")} aria-pressed={tab === "hand"} title="Large hand-controller layout (for phones)">
-          Hand controller
-        </button>
-        <button className={night ? "sel" : ""} onClick={() => setNight(!night)} aria-pressed={night} title="Red light for use at the telescope">
-          Red light
-        </button>
-        <button onClick={() => setSettings(true)} disabled={!site}>
-          Settings
-        </button>
-        {authEnabled && <button onClick={() => void logout()}>Log out</button>}
+        <div className="top-actions">
+          <button className={`ghost hand-toggle${tab === "hand" ? " sel" : ""}`} onClick={() => setTab(tab === "hand" ? "sky" : "hand")} aria-pressed={tab === "hand"} title="Large hand-controller layout (for phones)">
+            <Icon name="remote" />
+            <span>Hand controller</span>
+          </button>
+          <button className={`ghost${night ? " sel" : ""}`} onClick={() => setNight(!night)} aria-pressed={night} title="Red light for use at the telescope">
+            <Icon name="moon" />
+            <span>Red light</span>
+          </button>
+          <button className="ghost" onClick={() => setSettings(true)} disabled={!site}>
+            <Icon name="sliders" />
+            <span>Settings</span>
+          </button>
+          {authEnabled && (
+            <button className="ghost" onClick={() => void logout()}>
+              <Icon name="logout" />
+              <span>Log out</span>
+            </button>
+          )}
+        </div>
       </header>
       <nav className="tabs" role="tablist">
         {TABS.map((t) => (
@@ -165,13 +183,13 @@ function Main() {
         <section className="col sky-col">
           <SearchPanel />
           <SkyMap layers={layers} followMount={follow} />
-          <div className="layers">
+          <div className="layers" role="group" aria-label="Sky map layers">
             {(Object.keys(layers) as (keyof Layers)[]).map((k) => (
-              <label key={k}>
+              <label key={k} className="chip">
                 <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {LAYER_LABEL[k]}
               </label>
             ))}
-            <label>
+            <label className="chip follow">
               <input type="checkbox" checked={follow} onChange={() => setFollow(!follow)} /> Follow mount
             </label>
           </div>

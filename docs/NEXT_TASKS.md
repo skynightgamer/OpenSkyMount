@@ -1,5 +1,7 @@
 # Next tasks (ordered)
 
+0. Session 9 follow-up: run `scripts/e2e.sh` on the `feat/ui-polish` styling and regenerate the README screenshots
+   (`frontend/e2e/readme-shots.cjs`).
 1. Session 6 follow-ups: try a real gamepad (Xbox/PlayStation) and installing the app on a real phone (needs HTTPS,
    task 7, for the service worker); load real CelesTrak/MPC files and compare a satellite pass with a sky observation;
    editable queue items (duration/start time) and per-item "GoTo only"; visual magnitudes for satellites.

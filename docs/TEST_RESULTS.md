@@ -1,5 +1,8 @@
 # Test results
 
+Session 9 (2026-11-07, styling only): backend 118 passed / 8 skipped, frontend tsc pass, 33 unit tests pass, build pass.
+Browser E2E **not run** this session (no Playwright browser installed); the table below is the session 8 full run.
+
 Last full run: 2026-11-07 (session 8), macOS (local), Python 3.15, Node 22, Playwright 1.48 Chromium, **without** the optional extras
 (Astropy, cedar-solve; their 8 tests skipped, they run in CI's 3.13 job). Versions are listed in `backend/requirements.lock.txt` and
 `frontend/package-lock.json`. The same checks run in GitHub Actions on every push (`.github/workflows/ci.yml`):
