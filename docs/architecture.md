@@ -35,6 +35,7 @@ receive and send intents. All devices see the same mount state because there is 
 | Simulation | `mount/axis.py`, `mount/sim_driver.py` | Deterministic per-axis motion (bounded velocity/acceleration, discrete-time braking, setpoint extrapolation), backlash, missed steps, limit switches, latency, encoder noise, tilt and zero-point errors, faults |
 | Hardware path | `mount/protocol.py`, `protocol_driver.py`, `fake_firmware.py` | OSM/1 ASCII line protocol, a host-side driver, and a simulated microcontroller endpoint |
 | Server | `server/app.py`, `server/sessions.py` | REST queries, WebSocket telemetry and commands, control authority, config persistence (`state/config.json`), static UI |
+| Sign-in | `server/auth.py`, `server/accounts.py`, `server/account_routes.py` | Open / shared-password / accounts modes, identities and roles (admin, operator, observer), in-memory sessions, account store (`state/accounts.json`) with a command-line tool, login/setup/account REST endpoints; WebSockets re-check their login when an account changes |
 | Plate solving | `solve/` | Experimental: render a star field, detect and solve it with tetra3, compute an alt/az correction |
 | UI | `frontend/src` | Sky map (stereographic projection, client-side Earth-rotation extrapolation), 3D mount, panels, responsive layout |
 

@@ -6,6 +6,13 @@
 //   node frontend/e2e/readme-shots.cjs http://127.0.0.1:8770 docs/img
 const { chromium, devices } = require("playwright");
 
+/** New browser context that has already seen the welcome screen (covered by e2e/accounts.cjs). */
+async function newCtx(browser, opts) {
+  const c = await browser.newContext(opts);
+  await c.addInitScript(() => localStorage.setItem("osm-welcome", "1"));
+  return c;
+}
+
 const base = process.argv[2] || "http://127.0.0.1:8000";
 const out = process.argv[3] || ".";
 
@@ -22,8 +29,8 @@ async function waitText(page, selector, re, timeout = 60000) {
 
 (async () => {
   const browser = await chromium.launch();
-  const desk = await (await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })).newPage();
-  const phone = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
+  const desk = await (await newCtx(browser, { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })).newPage();
+  const phone = await (await newCtx(browser, { ...devices["iPhone 13"] })).newPage();
   desk.setDefaultTimeout(120000);
   phone.setDefaultTimeout(120000);
   await desk.goto(base);

@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7, 8 and 9 merged; session 9 from `feat/ui-polish`).
+_Last updated: 2026-11-12 (session 10)._ Main branch: `main` (sessions 6–9 merged; session 10 worked directly on `main` at the user's request).
 
 ## Milestones
 
@@ -14,6 +14,8 @@ _Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7, 8 an
 | M6 Plate solving | **Experimental PoC done** | Synthetic frames → tetra3 solve → alignment correction loop (API, UI, tests) |
 | Ecosystem: ASCOM Alpaca | **Done, verified with alpyca** | Telescope device (ITelescopeV4, alt-az), management API, discovery; not yet tested with N.I.N.A./Stellarium/ConformU |
 | Observing sessions, satellites/comets, telemetry replay, gamepad, phone layout | **Done, verified (sim)** | Target queue; TLE/MPC elements (user-supplied); fast satellite tracking; JSONL recordings + replay; Gamepad API; hand-controller layout + PWA. See docs/observing.md |
+| Welcome screen, simulator setup guide | **Done, verified (sim, browser E2E)** | First-run welcome, 7-step docked guide with live completion checks. See D46 |
+| Accounts (log in/out, roles, account management) | **Done, verified (tests + browser E2E)** | Admin/operator/observer, first-admin setup from the server computer, profile, password change, logins list, user admin, CLI. See D47 |
 | CI | **Done** | GitHub Actions: backend (3.11, 3.13 + extras), frontend, browser E2E |
 
 ## Session log
@@ -137,3 +139,20 @@ _Last updated: 2026-11-07 (session 9)._ Main branch: `main` (sessions 6, 7, 8 an
   118 backend tests (8 skipped, optional extras not installed), tsc and 33 frontend unit tests pass; checked by eye in
   the in-app browser at 1440 × 900 and phone width. **Not run**: browser E2E scripts (no Playwright browser set up this
   session; selectors and button names were kept). README screenshots (`docs/img`) still show the session 8 styling.
+- **Session 10 (2026-11-12)**: user request: more compelling sky map, a simulator setup guide, a welcome screen, and
+  log in/out/account management. Worked directly on `main` (user's instruction).
+  (1) **Sky map** (D45, `src/sky/scenery.ts`): smooth camera flights (search, "Best tonight", compass buttons, new
+  centre button, double-click), eased "Follow mount"; decorative skyline layer ("Landscape": distant ridge, hills and
+  procedural trees ≤ ~3°, coloured by Sun altitude, true horizon still drawn); ecliptic layer; airglow band; bright-star
+  twinkle (stronger low down); selection brackets with a name tag; animated target ring; mount → target line while
+  slewing; fading mount trail; status pill. Respects `prefers-reduced-motion`. Layer choices remembered per device.
+  Found and fixed in E2E: drawing into a zero-size canvas while the sky tab is hidden on phones threw every frame.
+  (2) **Welcome screen + simulator setup guide** (D46, `Welcome.tsx`, `Guide.tsx`).
+  (3) **Accounts** (D47, `server/accounts.py`, `server/auth.py`, `server/account_routes.py`, `Account.tsx`): login
+  screen with user name, "keep me logged in", shared-password fallback; account menu in the top bar; account dialog
+  (profile, password and logins with per-device log out and "log out everywhere", user admin: add with generated
+  password, role, reset password, delete); first-admin setup; observer role enforced on WebSocket and REST;
+  command-line tool for a forgotten admin password. Existing password mode and Alpaca HTTP Basic unchanged.
+  136 backend tests (+18 accounts; 8 skipped, optional extras not installed), 42 frontend unit tests (+9 scenery) and
+  all four browser E2E scripts (new `frontend/e2e/accounts.cjs`) pass; README screenshots regenerated.
+  **Not verified**: on a real phone, with a screen reader, frame rate on low-end devices with the skyline layer.

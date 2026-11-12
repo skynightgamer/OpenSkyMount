@@ -5,6 +5,7 @@ import { ExposurePlanner, TonightList } from "./Planner";
 import { SatellitePasses } from "./Session";
 import {
   MANUAL_SPEEDS,
+  canControl,
   command,
   getState,
   isController,
@@ -117,7 +118,7 @@ export function SearchPanel() {
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && hits[0]) {
-            select(hits[0].id);
+            select(hits[0].id, true);
             setQ("");
           }
         }}
@@ -129,7 +130,7 @@ export function SearchPanel() {
             <li key={h.id}>
               <button
                 onClick={() => {
-                  select(h.id);
+                  select(h.id, true);
                   setQ("");
                 }}
               >
@@ -316,10 +317,18 @@ function Authority() {
   const ctl = useStore((s) => isController(s));
   const control = useStore((s) => s.control);
   const conn = useStore((s) => s.connection);
+  const allowed = useStore((s) => canControl(s));
   if (conn !== "open") return <div className="authority warn">Disconnected, reconnecting…</div>;
   return (
     <div className={`authority ${ctl ? "ok" : control?.controller ? "other" : "free"}`}>
-      {ctl ? (
+      {!allowed && !ctl ? (
+        <>
+          <span title="Observer accounts can watch and stop the mount, but not take control">
+            View only{control?.controller ? `: ${control.controller_name} has control` : ""}
+          </span>
+          <span className="badge">observer</span>
+        </>
+      ) : ctl ? (
         <>
           <span>You have control</span>
           <button onClick={releaseControl} title="Let another device take control">

@@ -2,12 +2,19 @@
 // The server must be started with OPENSKYMOUNT_PASSWORD=<password>.
 const { chromium } = require("playwright");
 
+/** New browser context that has already seen the welcome screen (covered by e2e/accounts.cjs). */
+async function newCtx(browser, opts) {
+  const c = await browser.newContext(opts);
+  await c.addInitScript(() => localStorage.setItem("osm-welcome", "1"));
+  return c;
+}
+
 const base = process.argv[2] || "http://127.0.0.1:8767";
 const password = process.argv[3];
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+  const page = await (await newCtx(browser, { viewport: { width: 1280, height: 800 } })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
 
@@ -34,7 +41,8 @@ const password = process.argv[3];
   // Session survives a reload (cookie), and log out returns to the login screen.
   await page.reload();
   await page.locator(".telemetry .mode").waitFor({ timeout: 20000 });
-  await page.getByRole("button", { name: "Log out" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
   await page.getByRole("button", { name: "Log in" }).waitFor();
   const status = await page.evaluate(() => fetch("/api/config").then((r) => r.status));
   if (status !== 401) throw new Error(`API still reachable after logout: ${status}`);

@@ -3,6 +3,13 @@
 // Usage: node e2e/features.cjs [baseUrl] [screenshotDir]
 const { chromium } = require("playwright");
 
+/** New browser context that has already seen the welcome screen (covered by e2e/accounts.cjs). */
+async function newCtx(browser, opts) {
+  const c = await browser.newContext(opts);
+  await c.addInitScript(() => localStorage.setItem("osm-welcome", "1"));
+  return c;
+}
+
 const base = process.argv[2] || "http://127.0.0.1:8000";
 const shots = process.argv[3] || ".";
 
@@ -38,7 +45,7 @@ const FAKE_PAD = () => {
 (async () => {
   const browser = await chromium.launch();
   const errors = [];
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: "UTC" });
+  const ctx = await newCtx(browser, { viewport: { width: 1440, height: 900 }, timezoneId: "UTC" });
   await ctx.addInitScript(FAKE_PAD);
   const a = await ctx.newPage();
   a.on("pageerror", (e) => errors.push(e.message));
@@ -128,7 +135,7 @@ const FAKE_PAD = () => {
   console.log("Gamepad: dead man, manual slew, release, E-STOP OK");
 
   // Hand-controller layout on a phone.
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: "UTC" });
+  const phone = await newCtx(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: "UTC" });
   const p = await phone.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
   await p.goto(base + "/?view=hand");

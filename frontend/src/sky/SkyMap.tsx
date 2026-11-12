@@ -20,7 +20,25 @@ import {
   type View,
 } from "./projection";
 import { drawSkyBackground, glowSprite, hexRgb, limbAngle, moonLitPath, SPRITE_CORE, type SkyLight } from "./skyrender";
+import {
+  compassPoint,
+  eclipticVec,
+  flightAt,
+  landscapeAlt,
+  makeFlight,
+  ridgeAlt,
+  sceneryColors,
+  separation,
+  shortestDelta,
+  twinkle,
+  wrap360,
+  type Flight,
+  type ViewPose,
+} from "./scenery";
 import { Icon } from "../components/Icon";
+
+/** Users who ask for less motion get instant camera moves and no twinkling or pulsing markers. */
+const REDUCED_MOTION = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 interface Catalog {
   stars: [number, number, number, number, number, string][];
@@ -118,6 +136,8 @@ export interface Layers {
   equatorial: boolean;
   dsos: boolean;
   milkyway: boolean;
+  ecliptic: boolean;
+  landscape: boolean;
 }
 
 // User-supplied objects (orbital elements): drawn smaller, coloured by kind.
@@ -150,11 +170,38 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
   const hitsRef = useRef<Hit[]>([]);
   const layersRef = useRef(layers);
   const followRef = useRef(followMount);
+  const flightRef = useRef<Flight | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const observer = useStore((s) => s.config?.config.observer);
   const orbitsRev = useStore((s) => s.orbitsRevision);
+  const centerReq = useStore((s) => s.centerReq);
+  const selectedId = useStore((s) => s.selectedId);
   layersRef.current = layers;
   followRef.current = followMount;
+
+  /** Smooth camera move to a pose (missing fields keep their value). */
+  const flyTo = (to: Partial<ViewPose>) => {
+    const v = viewRef.current;
+    const from = { az: v.az, alt: v.alt, fov: v.fov };
+    const target = { az: wrap360(to.az ?? v.az), alt: Math.max(-30, Math.min(90, to.alt ?? v.alt)), fov: clampFov(to.fov ?? v.fov) };
+    flightRef.current = makeFlight(from, target, performance.now(), REDUCED_MOTION);
+  };
+
+  // Centre the view on an object picked in search, "Best tonight" or the centre button.
+  useEffect(() => {
+    if (!centerReq) return;
+    let cancelled = false;
+    fetch(`/api/object?id=${encodeURIComponent(centerReq.id)}&t=${simNow()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((o: { alt?: number; az?: number } | null) => {
+        if (cancelled || !o || typeof o.alt !== "number" || typeof o.az !== "number") return;
+        flyTo({ az: o.az, alt: Math.max(-20, Math.min(85, o.alt)), fov: Math.min(viewRef.current.fov, 60) });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [centerReq?.n]);
 
   // Catalog (once) and sky frames (periodically and on time jumps / site changes).
   useEffect(() => {
@@ -199,6 +246,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     let raf = 0;
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
+    let lastFrame = performance.now();
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const wrap = wrapRef.current;
@@ -206,6 +254,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
       const dpr = window.devicePixelRatio || 1;
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
+      if (w < 1 || h < 1) return; // hidden (another tab on a phone): nothing to draw
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
         canvas.width = Math.round(w * dpr);
         canvas.height = Math.round(h * dpr);
@@ -217,11 +266,23 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
       view.width = w;
       view.height = h;
       const st = getState();
-      if (followRef.current && st.mount) {
-        view.az = st.mount.position.az;
-        view.alt = Math.max(-20, Math.min(90, st.mount.position.alt));
+      const tMs = performance.now();
+      const dt = Math.min(0.25, (tMs - lastFrame) / 1000);
+      lastFrame = tMs;
+      const fl = flightRef.current;
+      if (fl) {
+        const p = flightAt(fl, tMs);
+        view.az = p.az;
+        view.alt = p.alt;
+        view.fov = p.fov;
+        if (p.done) flightRef.current = null;
+      } else if (followRef.current && st.mount) {
+        // Ease toward the mount instead of snapping (also smooths the 10 Hz telemetry steps).
+        const k = REDUCED_MOTION ? 1 : 1 - Math.exp(-dt / 0.15);
+        view.az = wrap360(view.az + shortestDelta(view.az, st.mount.position.az) * k);
+        view.alt += (Math.max(-20, Math.min(90, st.mount.position.alt)) - view.alt) * k;
       }
-      render(ctx, view, frameRef.current, catRef.current, layersRef.current, hitsRef);
+      render(ctx, view, frameRef.current, catRef.current, layersRef.current, hitsRef, tMs);
     };
     draw();
     return () => cancelAnimationFrame(raf);
@@ -234,6 +295,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     let moved = 0;
     let pinchDist = 0;
     const down = (e: PointerEvent) => {
+      flightRef.current = null; // the user takes over the camera
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       moved = 0;
@@ -275,6 +337,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      flightRef.current = null;
       viewRef.current.fov = clampFov(viewRef.current.fov * Math.exp(e.deltaY * 0.001));
     };
     const click = (x: number, y: number) => {
@@ -297,7 +360,15 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     canvas.addEventListener("pointerup", up);
     canvas.addEventListener("pointercancel", up);
     canvas.addEventListener("wheel", wheel, { passive: false });
+    // Double-click: centre on that point and zoom in.
+    const dbl = (e: MouseEvent) => {
+      const v = unproject(basis(viewRef.current), e.offsetX, e.offsetY);
+      const [alt, az] = vecToAltaz(v);
+      flyTo({ az, alt, fov: viewRef.current.fov * 0.55 });
+    };
+    canvas.addEventListener("dblclick", dbl);
     return () => {
+      canvas.removeEventListener("dblclick", dbl);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
@@ -306,15 +377,12 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     };
   }, []);
 
-  const zoom = (f: number) => (viewRef.current.fov = clampFov(viewRef.current.fov * f));
-  const face = (az: number) => {
-    viewRef.current.az = az;
-    viewRef.current.alt = 30;
-  };
+  const zoom = (f: number) => flyTo({ fov: (flightRef.current?.to.fov ?? viewRef.current.fov) * f });
+  const face = (az: number) => flyTo({ az, alt: 25 });
 
   return (
     <div className="sky-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} className="sky-canvas" aria-label="Sky map. Drag to pan, scroll or pinch to zoom, click an object to select it." />
+      <canvas ref={canvasRef} className="sky-canvas" aria-label="Sky map. Drag to pan, scroll or pinch to zoom, click an object to select it, double-click to centre." />
       <div className="sky-tools">
         <div className="toolgroup">
           <button onClick={() => zoom(0.7)} aria-label="Zoom in" title="Zoom in">
@@ -330,6 +398,11 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
               {d}
             </button>
           ))}
+        </div>
+        <div className="toolgroup">
+          <button onClick={() => selectedId && select(selectedId, true)} disabled={!selectedId} aria-label="Centre on selection" title="Centre on the selected object">
+            <Icon name="target" />
+          </button>
         </div>
       </div>
       {hover && <div className="sky-hover">{hoverLabel(hover, catRef.current, frameRef.current?.f)}</div>}
@@ -470,6 +543,7 @@ function render(
   cat: Prepared | null,
   layers: Layers,
   hitsRef: { current: Hit[] },
+  tMs: number,
 ) {
   const { width: w, height: h } = view;
   const b = basis(view);
@@ -477,8 +551,9 @@ function render(
   const now = simNow();
   const sunAlt = fr?.f.sun_alt ?? -30;
   const m = fr ? advanceMatrix(fr.f.matrix, now - fr.f.time) : null;
-  const ground = groundColor(sunAlt);
   const hits: Hit[] = [];
+  const tSec = tMs / 1000;
+  const selId = st.selectedId; // its name tag replaces the plain label
   const maxJump = Math.max(w, h) * 0.5;
 
   // Sky background with twilight, moonlight and the Milky Way.
@@ -514,6 +589,29 @@ function render(
       }
     }
 
+    if (layers.ecliptic) {
+      // The Sun's yearly path; the Moon and planets stay close to it.
+      const pts: Vec3[] = [];
+      for (let lon = 0; lon <= 360; lon += 2) pts.push(mulMV(m, eclipticVec(lon)));
+      ctx.strokeStyle = "rgba(255,200,110,0.5)";
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([7, 6]);
+      polyline(ctx, b, pts, maxJump);
+      ctx.setLineDash([]);
+      if (layers.labels) {
+        for (let lon = 15; lon < 360; lon += 30) {
+          const p = project(b, mulMV(m, eclipticVec(lon)), 0);
+          if (p && p[0] > 60 && p[0] < w - 80 && p[1] > 50 && p[1] < h - 50) {
+            ctx.fillStyle = "rgba(255,206,130,0.7)";
+            ctx.font = "italic 11px system-ui, sans-serif";
+            ctx.textAlign = "left";
+            ctx.fillText("Ecliptic", p[0] + 4, p[1] - 5);
+            break;
+          }
+        }
+      }
+    }
+
     if (layers.constellations) {
       ctx.strokeStyle = "rgba(125,165,225,0.34)";
       ctx.lineWidth = 1;
@@ -542,7 +640,7 @@ function render(
         const p = project(b, mulMV(m, d.v), 0);
         if (!p || p[0] < -10 || p[0] > w + 10 || p[1] < -10 || p[1] > h + 10) continue;
         dsoSymbol(ctx, d.type, p[0], p[1]);
-        if (layers.labels && view.fov < 70) {
+        if (layers.labels && view.fov < 70 && selId !== "dso:" + d.id) {
           ctx.fillStyle = "rgba(200,215,205,0.7)";
           ctx.fillText(d.id, p[0] + 7, p[1] + 3);
         }
@@ -578,9 +676,15 @@ function render(
         const alt = Math.asin(Math.max(-1, Math.min(1, v[2]))) / DEG;
         const mag = s[3] + extinction(alt);
         if (mag > limitMag + 0.3 && s[3] > 2) continue;
-        const r = Math.max(0.55, (6.9 - mag) * 0.38 + zoomBoost);
+        let r = Math.max(0.55, (6.9 - mag) * 0.38 + zoomBoost);
         const below = v[2] < 0 ? 0.35 : 1;
-        const faint = mag > 6.5 ? 0.55 + (0.3 * (8 - mag)) / 1.5 : mag > 5 ? 0.75 + 0.25 * (6.5 - mag) / 1.5 : 1;
+        let faint = mag > 6.5 ? 0.55 + (0.3 * (8 - mag)) / 1.5 : mag > 5 ? 0.75 + 0.25 * (6.5 - mag) / 1.5 : 1;
+        if (!day && !REDUCED_MOTION && s[3] < 3.2 && v[2] > 0) {
+          // Scintillation of the brighter stars, stronger near the horizon.
+          const tw = twinkle(s[0], tSec, alt);
+          faint *= Math.min(1, tw);
+          r *= 0.93 + 0.07 * tw;
+        }
         const color = bvColor(s[4]);
         ctx.globalAlpha = Math.max(0.15, below * faint);
         if (r > 1.25 && !day) {
@@ -592,7 +696,7 @@ function render(
           ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
           ctx.fill();
         }
-        if (layers.labels && s[5] && (s[3] < 1.6 || (view.fov < 60 && s[3] < 3.5) || (view.fov < 20 && s[3] < 6.5))) {
+        if (layers.labels && s[5] && selId !== "hip:" + s[0] && (s[3] < 1.6 || (view.fov < 60 && s[3] < 3.5) || (view.fov < 20 && s[3] < 6.5))) {
           labels.push([s[5], p[0] + r + 3, p[1] + 3]);
         }
         if (s[3] < 5.5 || view.fov < 40) hits.push({ id: "hip:" + s[0], x: p[0], y: p[1] });
@@ -647,7 +751,7 @@ function render(
         ctx.fill();
       }
       ctx.globalAlpha = 1;
-      if (layers.labels) {
+      if (layers.labels && body.id !== selId) {
         ctx.fillStyle = "#ffe6b0";
         ctx.font = "12px system-ui, sans-serif";
         ctx.textAlign = "left";
@@ -657,8 +761,8 @@ function render(
     }
   }
 
-  // Ground (alt < 0): translucent so objects below the horizon stay visible.
-  drawGround(ctx, b, w, h, ground);
+  // Ground (alt < 0) and the optional decorative skyline: translucent so objects behind stay visible.
+  drawTerrain(ctx, b, w, h, sunAlt, layers.landscape, maxJump, view.fov);
 
   if (layers.altaz) {
     ctx.strokeStyle = "rgba(255,200,120,0.18)";
@@ -674,9 +778,9 @@ function render(
       polyline(ctx, b, pts, maxJump);
     }
   }
-  // Horizon line and compass points.
-  ctx.strokeStyle = "rgba(255,190,110,0.8)";
-  ctx.lineWidth = 1.5;
+  // True horizon (altitude 0) and compass points. Fainter when the decorative skyline is drawn over it.
+  ctx.strokeStyle = layers.landscape ? "rgba(255,190,110,0.45)" : "rgba(255,190,110,0.8)";
+  ctx.lineWidth = layers.landscape ? 1 : 1.5;
   const hz: Vec3[] = [];
   for (let az = 0; az <= 360; az += 2) hz.push(altazToVec(0, az));
   polyline(ctx, b, hz, maxJump);
@@ -688,16 +792,49 @@ function render(
     if (p) ctx.fillText(label, p[0], p[1] + 10);
   });
 
-  // Selection, target and mount markers.
+  // Mount trail, slew line, selection, target and mount markers.
   const mount = st.mount;
-  if (fr && st.selectedId) {
-    const sel = markerVec(st.selectedId, fr, cat, now);
-    if (sel) drawReticle(ctx, b, sel, "#7cf0ff", 11, false);
-  }
-  if (mount?.target) drawReticle(ctx, b, altazToVec(mount.target.alt, mount.target.az), "#ffb347", 15, true);
   if (mount) {
-    const p = project(b, altazToVec(mount.position.alt, mount.position.az), 0);
+    recordTrail(mount.position.alt, mount.position.az, tSec);
+    drawTrail(ctx, b, tSec, maxJump);
+  }
+  const mountVec = mount ? altazToVec(mount.position.alt, mount.position.az) : null;
+  const targetVec = mount?.target ? altazToVec(mount.target.alt, mount.target.az) : null;
+  if (mount && mountVec && targetVec && mount.mode === "slewing") {
+    // Line of sight from the mount to its target (an indicator, not the axis path, which moves alt and az separately).
+    ctx.strokeStyle = "rgba(255,179,71,0.6)";
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([2, 6]);
+    ctx.lineDashOffset = REDUCED_MOTION ? 0 : -((tMs / 30) % 8);
+    polyline(ctx, b, greatCircle(mountVec, targetVec), maxJump);
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+  }
+  if (fr && st.selectedId) {
+    if (selAnim.id !== st.selectedId) selAnim = { id: st.selectedId, t0: tMs };
+    const sel = markerVec(st.selectedId, fr, cat, now);
+    if (sel) drawSelection(ctx, b, sel, selectionLabel(st.selectedId, cat, fr.f), tMs - selAnim.t0, w);
+  } else selAnim = { id: null, t0: 0 };
+  if (mount && targetVec) drawTargetMark(ctx, b, targetVec, tMs, mount.mode);
+  if (mount && mountVec) {
+    const p = project(b, mountVec, 0);
     if (p) {
+      const moving = ["slewing", "tracking", "manual", "homing"].includes(mount.mode);
+      if (moving) {
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(glowSprite("#ff5b7a"), p[0] - 22, p[1] - 22, 44, 44);
+        ctx.globalCompositeOperation = "source-over";
+        ctx.globalAlpha = 1;
+      }
+      if (mount.mode === "slewing" && !REDUCED_MOTION) {
+        const ph = (tMs / 1100) % 1;
+        ctx.strokeStyle = `rgba(255,91,122,${0.55 * (1 - ph)})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], 8 + 18 * ph, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.strokeStyle = "#ff5b7a";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -719,11 +856,143 @@ function render(
   }
   hitsRef.current = hits;
 
-  // Scale / info overlay.
-  ctx.fillStyle = "rgba(200,190,175,0.6)";
-  ctx.font = "11px system-ui, sans-serif";
+  // Status pill: light, field of view and where the view is looking.
+  const state = fr?.f.sky_state ?? "loading…";
+  const hud = `${state.charAt(0).toUpperCase()}${state.slice(1)}  ·  FOV ${view.fov.toFixed(0)}°  ·  facing ${compassPoint(view.az)} ${view.az.toFixed(0)}°, alt ${view.alt.toFixed(0)}°`;
+  pill(ctx, hud, 10, h - 10, "rgba(205,214,228,0.82)", "rgba(8,12,20,0.62)", "rgba(255,255,255,0.08)");
+}
+
+// ------------------------------------------------------------------ markers
+let selAnim: { id: string | null; t0: number } = { id: null, t0: 0 };
+
+/** Rounded label with a background, anchored at its bottom-left corner. */
+function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fg: string, bg: string, border: string) {
+  ctx.font = "11.5px system-ui, sans-serif";
   ctx.textAlign = "left";
-  ctx.fillText(`FOV ${view.fov.toFixed(0)}° · view az ${view.az.toFixed(0)}° alt ${view.alt.toFixed(0)}° · ${fr?.f.sky_state ?? "loading…"}`, 10, h - 10);
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = bg;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y - 21, tw + 18, 21, 10.5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = fg;
+  ctx.fillText(text, x + 9, y - 6.5);
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+/** Corner brackets that close in on the selection, with a name tag. */
+function drawSelection(ctx: CanvasRenderingContext2D, b: Basis, v: Vec3, label: string | null, ageMs: number, w: number) {
+  const p = project(b, v, 0);
+  if (!p) return;
+  const e = REDUCED_MOTION ? 1 : easeOutCubic(Math.min(1, ageMs / 420));
+  const R = 12 + 16 * (1 - e);
+  const L = 5.5;
+  ctx.save();
+  ctx.translate(p[0], p[1]);
+  ctx.rotate((1 - e) * (Math.PI / 2));
+  ctx.strokeStyle = "#7cf0ff";
+  ctx.globalAlpha = 0.35 + 0.65 * e;
+  ctx.lineWidth = 1.7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    ctx.moveTo(sx * R, sy * (R - L));
+    ctx.lineTo(sx * R, sy * R);
+    ctx.lineTo(sx * (R - L), sy * R);
+  }
+  ctx.stroke();
+  ctx.restore();
+  if (label && e > 0.5) {
+    ctx.globalAlpha = Math.min(1, (e - 0.5) * 2);
+    ctx.font = "11.5px system-ui, sans-serif";
+    // Centred above the brackets, clear of the object's own label (drawn to its right).
+    const tw = ctx.measureText(label).width + 18;
+    const x = Math.max(4, Math.min(w - tw - 4, p[0] - tw / 2));
+    pill(ctx, label, x, p[1] - R - 7, "#dff9ff", "rgba(6,22,30,0.78)", "rgba(124,240,255,0.4)");
+    ctx.globalAlpha = 1;
+  }
+}
+
+/** The mount's target: dashes that run while slewing and a steady ring with ticks once tracking. */
+function drawTargetMark(ctx: CanvasRenderingContext2D, b: Basis, v: Vec3, tMs: number, mode: string) {
+  const p = project(b, v, 0);
+  if (!p) return;
+  const r = 16;
+  ctx.strokeStyle = "#ffb347";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.lineDashOffset = REDUCED_MOTION ? 0 : mode === "slewing" ? -((tMs / 35) % 9) : -((tMs / 600) % 9);
+  ctx.beginPath();
+  ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
+  ctx.beginPath();
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    ctx.moveTo(p[0] + dx * (r + 2), p[1] + dy * (r + 2));
+    ctx.lineTo(p[0] + dx * (r + 7), p[1] + dy * (r + 7));
+  }
+  ctx.stroke();
+}
+
+function greatCircle(a: Vec3, c: Vec3, n = 48): Vec3[] {
+  const dot = Math.max(-1, Math.min(1, a[0] * c[0] + a[1] * c[1] + a[2] * c[2]));
+  const ang = Math.acos(dot);
+  if (ang < 1e-6) return [a, c];
+  const s = Math.sin(ang);
+  const out: Vec3[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const ka = Math.sin((1 - t) * ang) / s;
+    const kc = Math.sin(t * ang) / s;
+    out.push([ka * a[0] + kc * c[0], ka * a[1] + kc * c[1], ka * a[2] + kc * c[2]]);
+  }
+  return out;
+}
+
+// Recent mount positions (wall-clock seconds), drawn as a fading trail.
+const TRAIL_S = 90;
+const trail: { alt: number; az: number; t: number }[] = [];
+function recordTrail(alt: number, az: number, t: number) {
+  const last = trail[trail.length - 1];
+  if (last) {
+    if (t - last.t < 0.2) return;
+    const d = separation(last, { alt, az });
+    if (d > 25) trail.length = 0; // a jump (time warp, reconnect): start over
+    else if (d < 0.01) return;
+  }
+  trail.push({ alt, az, t });
+  while (trail.length && (t - trail[0].t > TRAIL_S || trail.length > 600)) trail.shift();
+}
+
+function drawTrail(ctx: CanvasRenderingContext2D, b: Basis, t: number, maxJump: number) {
+  if (trail.length < 2) return;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  let prev = project(b, altazToVec(trail[0].alt, trail[0].az), 0);
+  for (let i = 1; i < trail.length; i++) {
+    const q = project(b, altazToVec(trail[i].alt, trail[i].az), 0);
+    if (prev && q && Math.hypot(q[0] - prev[0], q[1] - prev[1]) < maxJump) {
+      const a = 0.5 * Math.max(0, 1 - (t - trail[i].t) / TRAIL_S);
+      ctx.strokeStyle = `rgba(255,91,122,${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(prev[0], prev[1]);
+      ctx.lineTo(q[0], q[1]);
+      ctx.stroke();
+    }
+    prev = q;
+  }
+}
+
+function selectionLabel(id: string, cat: Prepared | null, f: Frame): string | null {
+  if (id.startsWith("radec:") || id.startsWith("altaz:")) return null;
+  const l = hoverLabel(id, cat, f);
+  return l.replace(/\s+\(mag [^)]*\)$/, "");
 }
 
 function markerVec(id: string, fr: { f: Frame }, cat: Prepared | null, now: number): Vec3 | null {
@@ -749,18 +1018,6 @@ function markerVec(id: string, fr: { f: Frame }, cat: Prepared | null, now: numb
   return null;
 }
 
-function drawReticle(ctx: CanvasRenderingContext2D, b: Basis, v: Vec3, color: string, r: number, dashed: boolean) {
-  const p = project(b, v, 0);
-  if (!p) return;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash(dashed ? [4, 3] : []);
-  ctx.beginPath();
-  ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
 function drawGround(ctx: CanvasRenderingContext2D, b: Basis, w: number, h: number, color: string) {
   // The horizon is a great circle; its stereographic image is a circle (or a line).
   const pts: [number, number][] = [];
@@ -769,11 +1026,9 @@ function drawGround(ctx: CanvasRenderingContext2D, b: Basis, w: number, h: numbe
     if (p) pts.push([p[0], p[1]]);
   }
   ctx.fillStyle = color;
-  ctx.globalAlpha = 0.82;
   const nadir = project(b, [0, 0, -1], -2);
   if (pts.length < 3) {
     if (b.f[2] < 0) ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = 1;
     return;
   }
   const circ = circleFrom(pts[0], pts[Math.floor(pts.length / 3)], pts[Math.floor((2 * pts.length) / 3)]);
@@ -796,7 +1051,6 @@ function drawGround(ctx: CanvasRenderingContext2D, b: Basis, w: number, h: numbe
     ctx.lineTo(a[0] + ux * L + nx * L, a[1] + uy * L + ny * L);
     ctx.lineTo(a[0] - ux * L + nx * L, a[1] - uy * L + ny * L);
     ctx.fill();
-    ctx.globalAlpha = 1;
     return;
   }
   const nadirInside = nadir ? Math.hypot(nadir[0] - circ.x, nadir[1] - circ.y) < circ.r : b.f[2] < 0;
@@ -809,7 +1063,82 @@ function drawGround(ctx: CanvasRenderingContext2D, b: Basis, w: number, h: numbe
     ctx.arc(circ.x, circ.y, circ.r, 0, Math.PI * 2, true);
     ctx.fill("evenodd");
   }
+}
+
+/**
+ * Fill the band between altitude `bottom` and a skyline `top(az)` as polygons (one per continuous run of projected
+ * points). The step follows the zoom so tree crowns stay resolved without wasting work on wide views.
+ */
+function skylineFill(ctx: CanvasRenderingContext2D, b: Basis, top: (az: number) => number, bottom: number, maxJump: number, fov: number) {
+  const step = Math.max(0.04, Math.min(0.5, fov / 700));
+  const n = Math.ceil(360 / step);
+  let run: [number, number][] = [];
+  let base: [number, number][] = [];
+  ctx.beginPath();
+  const flush = () => {
+    if (run.length > 1) {
+      ctx.moveTo(run[0][0], run[0][1]);
+      for (let i = 1; i < run.length; i++) ctx.lineTo(run[i][0], run[i][1]);
+      for (let i = base.length - 1; i >= 0; i--) ctx.lineTo(base[i][0], base[i][1]);
+      ctx.closePath();
+    }
+    run = [];
+    base = [];
+  };
+  for (let i = 0; i <= n; i++) {
+    const az = i * step;
+    const pt = project(b, altazToVec(top(az), az), -0.95);
+    const pb = project(b, altazToVec(bottom, az), -0.95);
+    const last = run[run.length - 1];
+    if (!pt || !pb || (last && Math.hypot(pt[0] - last[0], pt[1] - last[1]) > maxJump)) {
+      flush();
+      if (!pt || !pb) continue;
+    }
+    run.push([pt[0], pt[1]]);
+    base.push([pb[0], pb[1]]);
+  }
+  flush();
+  ctx.fill();
+}
+
+let terrainCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Ground below the horizon plus, optionally, a decorative skyline (distant ridge and near hills with trees, at most
+ * ~3° high). Ground and near skyline are drawn opaque off-screen and composited once, so they blend without seams.
+ */
+function drawTerrain(ctx: CanvasRenderingContext2D, b: Basis, w: number, h: number, sunAlt: number, landscape: boolean, maxJump: number, fov: number) {
+  if (!landscape) {
+    ctx.globalAlpha = 0.82;
+    drawGround(ctx, b, w, h, groundColor(sunAlt));
+    ctx.globalAlpha = 1;
+    return;
+  }
+  const colors = sceneryColors(sunAlt);
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = colors.far;
+  skylineFill(ctx, b, ridgeAlt, 0, maxJump, Math.max(fov, 30));
   ctx.globalAlpha = 1;
+  const cw = ctx.canvas.width;
+  const ch = ctx.canvas.height;
+  if (cw < 1 || ch < 1) return;
+  if (!terrainCanvas) terrainCanvas = document.createElement("canvas");
+  if (terrainCanvas.width !== cw || terrainCanvas.height !== ch) {
+    terrainCanvas.width = cw;
+    terrainCanvas.height = ch;
+  }
+  const g = terrainCanvas.getContext("2d")!;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  g.setTransform(ctx.getTransform());
+  drawGround(g, b, w, h, colors.near);
+  g.fillStyle = colors.near;
+  skylineFill(g, b, landscapeAlt, -0.5, maxJump, fov);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 0.86;
+  ctx.drawImage(terrainCanvas, 0, 0);
+  ctx.restore();
 }
 
 function circleFrom(a: [number, number], b: [number, number], c: [number, number]) {

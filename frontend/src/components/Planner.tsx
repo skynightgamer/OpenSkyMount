@@ -116,7 +116,7 @@ export function TonightList() {
         <ol className="tonight-list">
           {shown.map((t) => (
             <li key={t.id}>
-              <button onClick={() => select(t.id)} title={`Above ${minAlt}° from ${clock(t.above_from)} to ${clock(t.above_until)}`}>
+              <button onClick={() => select(t.id, true)} title={`Above ${minAlt}° from ${clock(t.above_from)} to ${clock(t.above_until)}`}>
                 <span className="tn-name">{t.name}</span>
                 <span className="tn-meta">
                   {t.type}

@@ -9,13 +9,16 @@ import {
   TargetPanel,
   Telemetry,
 } from "./components/Panels";
+import { AccountDialog, AccountMenu, LoginScreen, type AccountTab } from "./components/Account";
+import { SetupGuide, resetGuide } from "./components/Guide";
 import { Icon, Logo } from "./components/Icon";
+import { WelcomeScreen, markWelcomeSeen, welcomeDue } from "./components/Welcome";
 import { AlignmentPanel } from "./components/Planner";
 import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
 import { useGamepad } from "./gamepad";
 import MountView from "./mount/MountView";
 import SkyMap, { type Layers } from "./sky/SkyMap";
-import { MANUAL_SPEEDS, estopHttp, isController, login, logout, toast, useStore } from "./store";
+import { MANUAL_SPEEDS, isController, useStore } from "./store";
 
 type Tab = "sky" | "mount" | "control" | "hand";
 const TABS: Tab[] = ["sky", "mount", "control", "hand"];
@@ -40,61 +43,41 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   equatorial: "Equatorial grid",
   dsos: "Messier",
   milkyway: "Milky Way",
+  ecliptic: "Ecliptic",
+  landscape: "Landscape",
 };
+const DEFAULT_LAYERS: Layers = { constellations: true, labels: true, altaz: true, equatorial: false, dsos: true, milkyway: true, ecliptic: false, landscape: true };
 
-function Login() {
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const toasts = useStore((s) => s.toasts);
-  return (
-    <div className="login">
-      <form
-        className="login-box"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setBusy(true);
-          setErr(await login(pw));
-          setBusy(false);
-        }}
-      >
-        <h1>
-          <Logo size={24} />
-          OpenSkyMount
-        </h1>
-        <p>This mount is password protected.</p>
-        <label>
-          <span>Password</span>
-          <input type="password" autoComplete="current-password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} />
-        </label>
-        {err && <p className="login-error" role="alert">{err}</p>}
-        <button className="primary" type="submit" disabled={busy || !pw}>
-          {busy ? "Checking…" : "Log in"}
-        </button>
-        <hr />
-        <p className="login-note">Emergency stop works without the password.</p>
-        <button
-          type="button"
-          className="estop"
-          onClick={async () => toast((await estopHttp()) ? "Emergency stop sent" : "Emergency stop failed: server not reachable", "error")}
-        >
-          E-STOP
-        </button>
-      </form>
-      <div className="toasts" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.level}`}>
-            {t.text}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function loadLayers(): Layers {
+  try {
+    const saved = JSON.parse(localStorage.getItem("osm-layers") ?? "{}") as Partial<Layers>;
+    const out = { ...DEFAULT_LAYERS };
+    for (const k of Object.keys(out) as (keyof Layers)[]) if (typeof saved[k] === "boolean") out[k] = saved[k]!;
+    return out;
+  } catch {
+    return { ...DEFAULT_LAYERS };
+  }
+}
+
+function flag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    /* per-device preference only */
+  }
 }
 
 export default function App() {
   const auth = useStore((s) => s.auth);
-  if (auth === "required") return <Login />;
+  if (auth === "required") return <LoginScreen />;
   if (auth === "unknown") return null; // wait for /api/auth so nothing fetches protected data first
   return <Main />;
 }
@@ -113,13 +96,31 @@ function Main() {
   useGamepad(canMove, MANUAL_SPEEDS);
   const [settings, setSettings] = useState(false);
   const [follow, setFollow] = useState(false);
-  const [layers, setLayers] = useState<Layers>({ constellations: true, labels: true, altaz: true, equatorial: false, dsos: true, milkyway: true });
+  const [layers, setLayersState] = useState<Layers>(loadLayers);
+  const setLayers = (l: Layers) => {
+    setLayersState(l);
+    try {
+      localStorage.setItem("osm-layers", JSON.stringify(l));
+    } catch {
+      /* per-device preference only */
+    }
+  };
+  const [welcome, setWelcome] = useState(welcomeDue);
+  const [guide, setGuideState] = useState(() => flag("osm-guide-open"));
+  const setGuide = (on: boolean) => {
+    setGuideState(on);
+    setFlag("osm-guide-open", on);
+  };
+  const [account, setAccount] = useState<AccountTab | null>(null);
+  const closeWelcome = () => {
+    markWelcomeSeen();
+    setWelcome(false);
+  };
   const conn = useStore((s) => s.connection);
   const site = useStore((s) => s.config?.config.observer);
   const caps = useStore((s) => s.config?.capabilities);
   const toasts = useStore((s) => s.toasts);
   const latency = useStore((s) => s.latencyMs);
-  const authEnabled = useStore((s) => s.authEnabled);
   const toggle = (k: keyof Layers) => setLayers({ ...layers, [k]: !layers[k] });
   const [night, setNight] = useState(() => {
     try {
@@ -164,12 +165,7 @@ function Main() {
             <Icon name="sliders" />
             <span>Settings</span>
           </button>
-          {authEnabled && (
-            <button className="ghost" onClick={() => void logout()}>
-              <Icon name="logout" />
-              <span>Log out</span>
-            </button>
-          )}
+          <AccountMenu onAccount={setAccount} onWelcome={() => setWelcome(true)} onGuide={() => setGuide(true)} />
         </div>
       </header>
       <nav className="tabs" role="tablist">
@@ -212,7 +208,23 @@ function Main() {
         <section className="col hand-col">{tab === "hand" && <HandController />}</section>
       </main>
       <Telemetry />
+      {guide && !welcome && <SetupGuide onClose={() => setGuide(false)} onOpenSettings={() => setSettings(true)} />}
       {settings && <SettingsPanel onClose={() => setSettings(false)} />}
+      {account && <AccountDialog tab={account} onClose={() => setAccount(null)} />}
+      {welcome && (
+        <WelcomeScreen
+          onClose={closeWelcome}
+          onStartGuide={() => {
+            closeWelcome();
+            resetGuide();
+            setGuide(true);
+          }}
+          onCreateAccount={() => {
+            closeWelcome();
+            setAccount("setup");
+          }}
+        />
+      )}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => (
           <div key={t.id} className={`toast ${t.level}`}>

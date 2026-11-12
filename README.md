@@ -82,16 +82,26 @@ scripts/setup.sh          # creates backend/.venv, installs deps, builds the web
 scripts/run.sh            # http://localhost:8000
 ```
 
-To let other devices on your Wi-Fi watch or control the mount:
+On the first visit a welcome screen offers a **simulator setup guide**: a docked, step-by-step walkthrough (take
+control, observing site, payload, jump to tonight, first GoTo and tracking, stopping safely) that ticks steps off as
+you do them anywhere in the app. Reopen it, or the welcome screen, from the account menu at the top right.
+
+To let other devices on your Wi-Fi watch or control the mount, turn on sign-in first. Either create **accounts**
+(account menu → *Create admin account*, on the computer that runs OpenSkyMount), or set one shared password:
 
 ```bash
-OPENSKYMOUNT_PASSWORD='choose-a-password' scripts/run.sh --lan   # then open http://<your-computer-ip>:8000
+scripts/run.sh --lan                                              # with accounts, then open http://<your-computer-ip>:8000
+OPENSKYMOUNT_PASSWORD='choose-a-password' scripts/run.sh --lan   # or one shared password
 ```
 
-With a password set, every device has to log in first (the session is kept in a cookie). E-STOP on the login
-screen works without the password. The connection is plain HTTP, so this keeps other people on your network away
-from the controls but is no protection against a hostile network. Without a password the server prints a warning
-when it listens on the network.
+With accounts, everybody logs in with a user name and password. Roles: **admin** (also manages accounts),
+**operator** (drives the mount), **observer** (view only; can still press E-STOP). Admins add people, change roles,
+reset passwords and delete accounts under *Manage users*; everyone can change their own name and password and log
+out other devices under *Account settings*. A forgotten admin password is reset on the server computer:
+`backend/.venv/bin/python -m openskymount.server.accounts --state-dir state passwd <name>`.
+E-STOP on the login screen works without logging in. The connection is plain HTTP, so sign-in keeps other people on
+your network away from the controls but is no protection against a hostile network. Without sign-in the server
+prints a warning when it listens on the network.
 
 Angles (sexagesimal or decimal) and the time zone used for all times are set per device under
 **Settings → Display**.
@@ -110,8 +120,8 @@ Try it out:
 OpenSkyMount is also an ASCOM Alpaca **Telescope** device: in N.I.N.A. (or any Alpaca client) add an Alpaca
 telescope at the server's address and port (default `127.0.0.1:8000`, device 0), or let the client discover it when
 the server runs with `--lan`. Coordinates are "JNow". The program then appears in the web UI's client list and
-follows the same control and safety rules. In password mode the client logs in with HTTP Basic (any user name, the
-OpenSkyMount password). Tested with the alpyca client only so far. Details and limits: [docs/alpaca.md](docs/alpaca.md).
+follows the same control and safety rules. With sign-in on, the client logs in with HTTP Basic: an account's user name
+and password (observers are view only), or any user name with the shared password. Tested with the alpyca client only so far. Details and limits: [docs/alpaca.md](docs/alpaca.md).
 
 Headless demo (no browser):
 

@@ -3,6 +3,13 @@
 // Requires Playwright with Chromium (pre-installed in the Claude Code cloud environment).
 const { chromium } = require("playwright");
 
+/** New browser context that has already seen the welcome screen (covered by e2e/accounts.cjs). */
+async function newCtx(browser, opts) {
+  const c = await browser.newContext(opts);
+  await c.addInitScript(() => localStorage.setItem("osm-welcome", "1"));
+  return c;
+}
+
 const base = process.argv[2] || "http://127.0.0.1:8000";
 const shots = process.argv[3] || ".";
 
@@ -20,8 +27,8 @@ async function waitText(page, selector, re, timeout = 30000) {
 (async () => {
   const browser = await chromium.launch();
   const errors = [];
-  const ctxA = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  const ctxB = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const ctxA = await newCtx(browser, { viewport: { width: 1440, height: 900 } });
+  const ctxB = await newCtx(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const a = await ctxA.newPage();
   const b = await ctxB.newPage();
   for (const p of [a, b]) {

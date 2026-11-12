@@ -28,8 +28,10 @@ from ..mount.controller import CommandError, Mode, MountController
 from ..mount.driver import MountDriver
 from ..mount.sequencer import Sequencer
 from ..mount.sim_driver import INJECTABLE_FAULTS, SimulatedMountDriver
+from .account_routes import register_account_routes
+from .accounts import AccountStore
 from .alpaca import AlpacaTelescope, register_alpaca, start_discovery, unique_id_for
-from .auth import COOKIE, OPEN_PATHS, Auth, RateLimited
+from .auth import COOKIE, OPEN_PATHS, Auth, Identity
 from .recorder import RecorderError, TelemetryRecorder
 from .sessions import SessionManager
 
@@ -38,6 +40,8 @@ log = logging.getLogger("openskymount")
 TICK_S = 0.05
 BROADCAST_EVERY = 2  # ticks -> 10 Hz state updates
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+AUTH_RECHECK = "\x00auth"  # queue item: re-validate the login behind this WebSocket
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 def _finite(obj: Any) -> Any:
@@ -165,6 +169,16 @@ class Observatory:
                     with contextlib.suppress(asyncio.QueueEmpty):
                         q.get_nowait()  # drop the oldest message for slow clients
                 q.put_nowait(data)
+
+    def recheck_auth(self, match: Callable[[Identity | None], bool]) -> None:
+        """Ask the WebSocket handlers whose identity matches to re-validate their login (account changed, logout)."""
+        for s in list(self.sessions.sessions.values()):
+            q = s.queue
+            if isinstance(q, asyncio.Queue) and match(s.meta.get("identity")):
+                if q.full():
+                    with contextlib.suppress(asyncio.QueueEmpty):
+                        q.get_nowait()
+                q.put_nowait(AUTH_RECHECK)
 
     def public_config(self) -> dict[str, Any]:
         return {
@@ -386,7 +400,9 @@ def create_app(
     port) to answer Alpaca UDP discovery broadcasts on port 32227 (``None``: no discovery responder).
     """
     obs_holder: dict[str, Observatory] = {}
-    auth = Auth(password or None)
+    sd: Path | None = observatory.state_dir if observatory else (
+        state_dir if state_dir is not None else Path(os.environ.get("OPENSKYMOUNT_STATE", "state")))
+    auth = Auth(password or None, AccountStore(Path(sd) / "accounts.json" if sd else None))
     alpaca_dev: AlpacaTelescope | None = None
 
     @contextlib.asynccontextmanager
@@ -420,51 +436,19 @@ def create_app(
     @app.middleware("http")
     async def require_login(request: Request, call_next):  # type: ignore[no-untyped-def]
         path = request.url.path
-        if (
-            auth.required
-            and path.startswith("/api/")
-            and path not in OPEN_PATHS
-            and not auth.authorized(request.cookies.get(COOKIE), request.headers.get("authorization"))
-        ):
-            return JSONResponse({"detail": "login required"}, status_code=401)
+        if path.startswith("/api/"):
+            ident = auth.identify(request.cookies.get(COOKIE), request.headers.get("authorization"),
+                                  request.client.host if request.client else "?", time.time())
+            request.state.identity = ident
+            if path not in OPEN_PATHS:
+                if ident is None:
+                    return JSONResponse({"detail": "login required"}, status_code=401)
+                if not ident.can_control and request.method not in SAFE_METHODS and not path.startswith("/api/account"):
+                    return JSONResponse({"detail": "view-only account: ask an admin for operator access"},
+                                        status_code=403)
         return await call_next(request)
 
-    @app.get("/api/auth")
-    def auth_status(request: Request) -> dict[str, Any]:
-        return {
-            "required": auth.required,
-            "authenticated": auth.authorized(request.cookies.get(COOKIE), request.headers.get("authorization")),
-        }
-
-    @app.post("/api/login")
-    async def login(request: Request) -> JSONResponse:
-        if not auth.required:
-            return JSONResponse({"ok": True, "message": "no password is set"})
-        try:
-            body = await request.json()
-            pw = body.get("password") if isinstance(body, dict) else None
-        except ValueError:
-            pw = None
-        if not isinstance(pw, str):
-            return JSONResponse({"ok": False, "message": "password missing"}, status_code=400)
-        client = request.client.host if request.client else "?"
-        try:
-            token = auth.login(client, pw, time.time())
-        except RateLimited as exc:
-            return JSONResponse({"ok": False, "message": "too many attempts, wait a minute"}, status_code=429,
-                                headers={"Retry-After": str(max(1, round(exc.retry_after)))})
-        if token is None:
-            return JSONResponse({"ok": False, "message": "wrong password"}, status_code=401)
-        resp = JSONResponse({"ok": True})
-        resp.set_cookie(COOKIE, token, httponly=True, samesite="strict", path="/")
-        return resp
-
-    @app.post("/api/logout")
-    def logout(request: Request) -> JSONResponse:
-        auth.logout(request.cookies.get(COOKIE))
-        resp = JSONResponse({"ok": True})
-        resp.delete_cookie(COOKIE, path="/")
-        return resp
+    register_account_routes(app, auth, obsv)
 
     @app.post("/api/estop")
     async def estop_rest() -> dict[str, Any]:  # async: runs on the control-loop thread
@@ -611,17 +595,45 @@ def create_app(
     @app.websocket("/ws")
     async def ws(socket: WebSocket, name: str = "client") -> None:
         await socket.accept()
-        if not auth.authorized(socket.cookies.get(COOKIE), socket.headers.get("authorization")):
+        creds = (socket.cookies.get(COOKIE), socket.headers.get("authorization"))
+        host = socket.client.host if socket.client else "?"
+        ident = auth.identify(*creds, host, time.time())
+        if ident is None:
             await socket.close(code=4401, reason="login required")
             return
         o = obsv()
-        session = o.sessions.open(name, time.time())
+        device = name[:40] or "client"
+
+        def label(i: Identity) -> str:
+            return f"{i.display_name} · {device}"[:40] if i.kind == "account" else device
+
+        session = o.sessions.open(label(ident), time.time())
+        session.meta["identity"] = ident
         queue: asyncio.Queue[str] = asyncio.Queue(maxsize=8)
         session.queue = queue
 
+        def revalidate() -> bool:
+            """Re-check the login (account deleted, role or password changed, logged out). False: close."""
+            i = auth.identify(*creds, host, time.time())
+            if i is None:
+                return False
+            session.meta["identity"] = i
+            session.name = label(i)
+            if not i.can_control and o.sessions.release_control(session.id):
+                o._on_controller_change("account is view-only")
+            return True
+
         async def sender() -> None:
             while True:
-                await socket.send_text(await queue.get())
+                item = await queue.get()
+                if item == AUTH_RECHECK:
+                    if not revalidate():
+                        with contextlib.suppress(RuntimeError):
+                            await socket.close(code=4401, reason="login required")
+                        return
+                    await socket.send_text(json.dumps({"type": "auth_changed"}))
+                    continue
+                await socket.send_text(item)
 
         send_task = asyncio.create_task(sender())
         try:
@@ -631,12 +643,16 @@ def create_app(
             while True:
                 raw = await socket.receive_text()
                 now = time.time()
+                if not revalidate():
+                    with contextlib.suppress(RuntimeError):
+                        await socket.close(code=4401, reason="login required")
+                    break
                 o.sessions.touch(session.id, now)
                 reply = handle_message(o, session.id, raw, now)
                 if reply is not None:
                     await socket.send_text(json.dumps(_finite(reply)))
-        except WebSocketDisconnect:
-            pass
+        except (WebSocketDisconnect, RuntimeError):
+            pass  # RuntimeError: the sender closed the socket after a failed login check
         finally:
             send_task.cancel()
             was_controller = o.sessions.close(session.id)
@@ -646,8 +662,6 @@ def create_app(
                 o.broadcast({"type": "control", **o.sessions.describe(time.time())})
 
     if alpaca:
-        sd = observatory.state_dir if observatory else (
-            state_dir if state_dir is not None else Path(os.environ.get("OPENSKYMOUNT_STATE", "state")))
         alpaca_dev = register_alpaca(app, obsv, unique_id_for(str(Path(sd).resolve()) if sd else None))
         app.state.alpaca = alpaca_dev
 
@@ -676,6 +690,10 @@ def handle_message(o: Observatory, sid: str, raw: str, now: float) -> dict[str, 
     if mtype == "ping":
         return {"type": "pong", "t": msg.get("t")}
     if mtype == "request_control":
+        ident = o.sessions.sessions[sid].meta.get("identity") if sid in o.sessions.sessions else None
+        if isinstance(ident, Identity) and not ident.can_control:
+            return {"type": "control_result", "granted": False,
+                    "message": "this account is view-only (observer); ask an admin for operator access"}
         granted, prev = o.sessions.request_control(sid, now, bool(msg.get("force", False)))
         if granted and prev != sid:
             o._on_controller_change("control requested" if prev is None else "control taken over")

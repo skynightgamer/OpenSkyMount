@@ -28,7 +28,9 @@ def client(obs: Observatory) -> Iterator[TestClient]:
 
 def test_no_password_keeps_everything_open(obs: Observatory) -> None:
     with TestClient(create_app(observatory=obs)) as c:
-        assert c.get("/api/auth").json() == {"required": False, "authenticated": True}
+        a = c.get("/api/auth").json()
+        assert (a["required"], a["authenticated"], a["mode"]) == (False, True, "open")
+        assert a["user"]["kind"] == "open" and a["user"]["role"] == "operator"
         assert c.get("/api/config").status_code == 200
         with c.websocket_connect("/ws") as ws:
             assert json.loads(ws.receive_text())["type"] == "welcome"
@@ -36,7 +38,8 @@ def test_no_password_keeps_everything_open(obs: Observatory) -> None:
 
 def test_api_and_ws_require_login(client: TestClient) -> None:
     assert client.get("/api/health").status_code == 200
-    assert client.get("/api/auth").json() == {"required": True, "authenticated": False}
+    a = client.get("/api/auth").json()
+    assert (a["required"], a["authenticated"], a["mode"], a["user"]) == (True, False, "password", None)
     for path in ("/api/config", "/api/status", "/api/catalog", "/api/search?q=vega"):
         assert client.get(path).status_code == 401, path
     with client.websocket_connect("/ws") as ws, pytest.raises(WebSocketDisconnect) as exc:

@@ -48,15 +48,24 @@ export function skyShader(l: SkyLight): SkyShader {
   // exp(-(sep/55°)²) and exp(-sep/9°) with sep² ≈ 2(1 − cos sep)
   const kWarm = 2 / (55 * DEG) ** 2;
   const kHalo = 1 / (9 * DEG);
+  // Airglow: on dark nights a faint greenish band (oxygen 557.7 nm) peaks some 10-15° above the horizon.
+  const glowF = (1 - smoothstep(-18, -11, l.sunAlt)) * (1 - 0.8 * mF);
   return (vx, vy, vz, alt, out) => {
     const a01 = clamp01(alt / 90);
     const h = 1 - a01; // 1 at the horizon, 0 at the zenith
     const h3 = h * h * h;
     const oneMinusCosS = 1 - (vx * sx + vy * sy + vz * sz);
     // Night: almost black zenith, faint grey-blue glow toward the horizon (airglow / distant light).
-    let r = 3 + 13 * h3;
-    let g = 5 + 15 * h3;
-    let b = 11 + 19 * h3;
+    let r = 3 + 17 * h3;
+    let g = 5 + 21 * h3;
+    let b = 11 + 27 * h3;
+    if (glowF > 0) {
+      const d = (alt - 12) / 10;
+      const band = glowF * Math.exp(-d * d);
+      r += 2 * band;
+      g += 7 * band;
+      b += 3.5 * band;
+    }
     if (dayF > 0) {
       // Day: deep blue zenith, pale horizon, halo around the Sun.
       r += (34 + 110 * h3 - r) * dayF;

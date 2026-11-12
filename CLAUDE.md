@@ -21,8 +21,13 @@ behaviour is verified.
 - `mount/controller.py` — deterministic `update(sim_time, wall_time, epoch)`; owns GoTo/tracking/safety. Setpoints refer to the start of each control interval.
 - `mount/sim_driver.py` + `mount/axis.py` — physics. `mount/protocol*.py`, `fake_firmware.py` — OSM/1 hardware path.
 - `server/app.py` — `Observatory` (shared state, 20 Hz loop, 10 Hz broadcast), REST + `/ws`. Control authority in `server/sessions.py`.
+- `server/auth.py` + `server/accounts.py` + `server/account_routes.py` — sign-in (open / shared password / accounts with
+  admin/operator/observer roles). Account handlers are `async` (they wake WebSocket queues); scrypt runs in the thread pool.
 - `solve/` — optional, experimental plate solving (cedar-solve).
-- Frontend: `src/store.ts` (WS client/state), `src/sky/` (canvas sky map, projection math with unit tests), `src/mount/MountView.tsx` (three.js), `src/components/Panels.tsx`.
+- Frontend: `src/store.ts` (WS client/state), `src/sky/` (canvas sky map, projection math with unit tests; `scenery.ts`
+  = ecliptic, decorative skyline, twinkle, camera flights), `src/mount/MountView.tsx` (three.js), `src/components/Panels.tsx`,
+  `Account.tsx` (login, account menu/dialog), `Welcome.tsx`, `Guide.tsx` (simulator setup guide).
+- Playwright is not a project dependency (CI installs it). Locally: `NODE_PATH=<node_modules with a Playwright whose Chromium is installed> scripts/e2e.sh` (session 10 used 1.48 / chromium-1140).
 
 ## Rules
 - Safety: Sun GoTo blocked unless `allow_solar_targets` AND simulated driver. Never relax this on the hardware path.

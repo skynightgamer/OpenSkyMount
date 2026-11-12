@@ -115,6 +115,27 @@ export interface RecordingInfo {
   bytes: number;
 }
 
+export type Role = "admin" | "operator" | "observer";
+
+export interface AuthUser {
+  kind: "open" | "shared" | "account";
+  role: Role;
+  username: string | null;
+  display_name: string;
+}
+
+/** Answer of GET /api/auth. */
+export interface AuthInfo {
+  required: boolean;
+  authenticated: boolean;
+  mode: "open" | "password" | "accounts";
+  user: AuthUser | null;
+  password_login: boolean;
+  setup_allowed: boolean;
+  min_password_length: number;
+  roles: Role[];
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -134,12 +155,16 @@ export interface State {
   /** Changes whenever orbital elements (satellites, comets, asteroids) are loaded or removed. */
   orbitsRevision: number;
   selectedId: string | null;
+  /** Ask the sky map to centre on an object (`n` changes on every request). */
+  centerReq: { id: string; n: number } | null;
   toasts: Toast[];
   latencyMs: number | null;
   /** "unknown" until /api/auth answered; "required" shows the login screen. */
   auth: "unknown" | "required" | "ok";
-  /** True when the server has a password set (shows the log-out button). */
+  /** True when the server requires a login (shared password or accounts). */
   authEnabled: boolean;
+  /** Who this browser is signed in as, and what the server offers (accounts, first-run setup). */
+  authInfo: AuthInfo | null;
   prefs: DisplayPrefs;
   /** Manual slew rate (deg/s) shared by the on-screen pad, the hand controller and a gamepad. */
   manualSpeed: number;
@@ -172,10 +197,12 @@ let state: State = {
   recording: null,
   orbitsRevision: 0,
   selectedId: null,
+  centerReq: null,
   toasts: [],
   latencyMs: null,
   auth: "unknown",
   authEnabled: false,
+  authInfo: null,
   prefs: loadPrefs(),
   manualSpeed: 1,
   gamepad: { id: null, held: false, moving: false },
@@ -231,6 +258,11 @@ export function isController(s: State = state): boolean {
   return !!s.sessionId && s.control?.controller === s.sessionId;
 }
 
+/** False for view-only (observer) accounts: they cannot take control. */
+export function canControl(s: State = state): boolean {
+  return s.authInfo?.user?.role !== "observer";
+}
+
 // ------------------------------------------------------------------ socket
 type Ack = { ok: boolean; message?: string; [k: string]: unknown };
 
@@ -249,40 +281,81 @@ const NAME = clientName();
 
 let reconnectTimer: number | undefined;
 
-/** Check whether the server wants a login, then open the WebSocket. */
-export async function start(): Promise<void> {
+/** Fetch GET /api/auth into the store. Returns null if the server is unreachable. */
+export async function refreshAuth(): Promise<AuthInfo | null> {
   try {
     const r = await fetch("/api/auth");
-    const a = (await r.json()) as { required: boolean; authenticated: boolean };
-    setState({ authEnabled: a.required, auth: a.required && !a.authenticated ? "required" : "ok" });
-    if (a.required && !a.authenticated) return;
+    const a = (await r.json()) as AuthInfo;
+    setState({ authInfo: a, authEnabled: a.required, auth: a.required && !a.authenticated ? "required" : "ok" });
+    return a;
   } catch {
+    return null;
+  }
+}
+
+/** Check whether the server wants a login, then open the WebSocket. */
+export async function start(): Promise<void> {
+  const a = await refreshAuth();
+  if (!a) {
     // Server unreachable: show the app; the socket below retries with backoff and reports the connection state.
     setState({ auth: "ok" });
-  }
+  } else if (a.required && !a.authenticated) return;
   connect();
 }
 
-export async function login(password: string): Promise<string | null> {
-  try {
-    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-    const body = (await r.json().catch(() => ({}))) as { message?: string };
-    if (!r.ok) return body.message ?? `login failed (${r.status})`;
-  } catch {
-    return "server not reachable";
-  }
-  setState({ auth: "ok" });
-  connect();
-  return null;
-}
-
-export async function logout(): Promise<void> {
-  await fetch("/api/logout", { method: "POST" }).catch(() => {});
+/** Close the socket on purpose (no reconnect) and open a new one, e.g. after the login changed. */
+function reconnect(): void {
   clearTimeout(reconnectTimer);
   const sock = ws;
   ws = null;
   sock?.close();
-  setState({ auth: "required", connection: "closed", sessionId: null });
+  connect();
+}
+
+async function postJson(url: string, body: unknown): Promise<{ ok: boolean; status: number; data: Record<string, unknown> }> {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  return { ok: r.ok, status: r.status, data };
+}
+
+/** Log in with an account (`username`) or the shared password (no `username`). Returns an error text or null. */
+export async function login(password: string, username?: string, remember = false): Promise<string | null> {
+  try {
+    const r = await postJson("/api/login", { username: username || undefined, password, remember });
+    if (!r.ok) return (r.data.message as string) ?? `login failed (${r.status})`;
+  } catch {
+    return "server not reachable";
+  }
+  await refreshAuth();
+  setState({ auth: "ok" });
+  reconnect();
+  return null;
+}
+
+/** Create the first (admin) account. Turns sign-in on for every device. Returns an error text or null. */
+export async function setupAdmin(username: string, password: string, displayName: string): Promise<string | null> {
+  try {
+    const r = await postJson("/api/setup", { username, password, display_name: displayName, remember: true });
+    if (!r.ok) return (r.data.message as string) ?? `setup failed (${r.status})`;
+  } catch {
+    return "server not reachable";
+  }
+  await refreshAuth();
+  setState({ auth: "ok" });
+  reconnect();
+  return null;
+}
+
+export async function logout(everywhere = false): Promise<void> {
+  await postJson("/api/logout", { everywhere }).catch(() => {});
+  clearTimeout(reconnectTimer);
+  const sock = ws;
+  ws = null;
+  sock?.close();
+  setState({ connection: "closed", sessionId: null });
+  const a = await refreshAuth();
+  if (a && !a.required) connect(); // nothing to log out of (open mode)
+  else setState({ auth: "required" });
 }
 
 /** Emergency stop over plain HTTP: works without a login (used on the login screen). */
@@ -315,8 +388,13 @@ export function connect(): void {
     setState({ connection: "closed", sessionId: null });
     if (ws !== sock) return; // closed on purpose (log out)
     if (ev.code === 4401) {
-      // Session no longer valid (server restarted or logged out elsewhere): ask for the password again.
-      setState({ auth: "required", authEnabled: true });
+      // Login no longer valid (server restarted, logged out elsewhere, account changed, or sign-in was just turned
+      // on). Ask the server what to do: log in again, or reconnect if this browser holds a newer login.
+      void refreshAuth().then((a) => {
+        if (ws !== null && ws !== sock) return; // someone already reconnected
+        if (!a || a.authenticated) reconnectTimer = window.setTimeout(connect, 300);
+        else setState({ auth: "required", authEnabled: true });
+      });
       return;
     }
     const delay = Math.min(10000, 500 * 2 ** retry++);
@@ -376,6 +454,10 @@ function handle(msg: Record<string, unknown>): void {
     case "error":
       toast(String(msg.message), "error");
       break;
+    case "auth_changed":
+      // Our account changed (role, name, password elsewhere): fetch who we are now.
+      void refreshAuth();
+      break;
   }
 }
 
@@ -402,6 +484,7 @@ export function releaseControl(): void {
   send({ type: "release_control" });
 }
 
-export function select(id: string | null): void {
-  setState({ selectedId: id });
+/** Select an object; `center`: also turn the sky map toward it. */
+export function select(id: string | null, center = false): void {
+  setState(center && id ? { selectedId: id, centerReq: { id, n: (state.centerReq?.n ?? 0) + 1 } } : { selectedId: id });
 }

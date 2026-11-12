@@ -26,9 +26,10 @@ def main() -> None:
     args = parser.parse_args()
     if args.password is not None and len(args.password) < 6:
         parser.error("--password must have at least 6 characters")
-    if args.host not in ("127.0.0.1", "localhost", "::1") and not args.password:
-        print("WARNING: listening on the network without a password; anyone on this network can control the mount. "
-              "Set OPENSKYMOUNT_PASSWORD or --password.")
+    if (args.host not in ("127.0.0.1", "localhost", "::1") and not args.password
+            and not (Path(args.state_dir) / "accounts.json").exists()):
+        print("WARNING: listening on the network without sign-in; anyone on this network can control the mount. "
+              "Create an admin account (account menu, on this computer) or set OPENSKYMOUNT_PASSWORD.")
 
     import uvicorn
 

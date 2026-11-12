@@ -376,7 +376,7 @@ fieldset label.check input { width: auto; min-height: 0; accent-color: var(--acc
   .control-col { grid-column: 2; grid-row: 1 / span 2; }
 }
 @media (max-width: 1000px) {
-  .top-actions button span { display: none; }
+  .top-actions button span:not(.avatar) { display: none; }
   .top-actions button { padding: 0 8px; }
 }
 @media (max-width: 820px) {
@@ -439,19 +439,172 @@ fieldset label.check input { width: auto; min-height: 0; accent-color: var(--acc
 .align-points .mono { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .align-points button { min-height: 24px; padding: 0 7px; font-size: 12px; }
 
-/* ---- login (password-protected LAN mode) ---- */
-.login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+/* ---- login, welcome (D45): a decorative starfield behind a flat translucent card ---- */
+.starfield { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.login { position: relative; min-height: 100%; display: grid; place-items: center; padding: 16px; overflow: hidden; }
 .login-box {
-  width: min(360px, 100%); display: grid; gap: 12px; padding: 22px 22px 20px; border: 1px solid var(--line-strong); border-radius: 14px;
-  background: var(--bg-raised); box-shadow: 0 24px 60px rgb(0 0 0 / 0.5);
+  position: relative; width: min(380px, 100%); display: grid; gap: 12px; padding: 24px 24px 20px; border: 1px solid rgb(255 255 255 / 0.1); border-radius: 16px;
+  background: rgb(15 20 28 / 0.82); box-shadow: 0 30px 80px rgb(0 0 0 / 0.6); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
-.login-box h1 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.login-box h1 { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: 20px; font-weight: 650; letter-spacing: -0.01em; }
 .login-box p { margin: 0; color: var(--muted); }
-.login-box label { display: grid; gap: 5px; }
 .login-box hr { width: 100%; border: 0; border-top: 1px solid var(--line); margin: 6px 0 0; }
-.login-box .primary { min-height: 36px; }
-.login-error { color: var(--danger) !important; }
+.login-box .primary { min-height: 38px; }
+.login-error { margin: 0; color: var(--danger) !important; font-size: 12px; }
 .login-note { font-size: 12px; }
+.field { display: grid; gap: 5px; color: #c6cdd6; }
+.field > label { display: grid; gap: 5px; }
+.field > small { color: var(--faint); font-size: 11.5px; }
+.check-row { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+.check-row input { width: auto; min-height: 0; margin: 0; accent-color: var(--accent); }
+button.linkish { justify-self: start; min-height: 0; padding: 0; border: 0; background: none; box-shadow: none; color: var(--accent); font-size: 12.5px; }
+button.linkish:hover:not(:disabled) { background: none; text-decoration: underline; }
+button.linkish.danger { color: var(--danger); }
+button.big { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+
+.welcome { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.welcome-card {
+  position: relative; width: min(720px, 100%); padding: 28px 30px 22px; border: 1px solid rgb(255 255 255 / 0.1); border-radius: 18px;
+  background: rgb(13 18 26 / 0.8); box-shadow: 0 40px 100px rgb(0 0 0 / 0.65); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .welcome-card, .guide, .menu { animation: none !important; } }
+.welcome-close { position: absolute; top: 12px; right: 12px; width: 32px; padding: 0; justify-content: center; display: inline-flex; align-items: center; }
+.welcome-hero { display: flex; align-items: center; gap: 14px; }
+.welcome-kicker { margin: 0; color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.welcome-hero h1 { margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.welcome-lead { margin: 14px 0 18px; font-size: 15px; line-height: 1.5; color: #c9d2de; max-width: 56ch; }
+.welcome-features { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.welcome-features li { display: flex; gap: 11px; padding: 12px 12px; border: 1px solid var(--line); border-radius: 12px; background: rgb(255 255 255 / 0.025); }
+.welcome-features strong { display: block; font-size: 13.5px; margin-bottom: 2px; }
+.welcome-features small { display: block; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.wf-icon { flex: 0 0 auto; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-line); }
+.welcome-note { display: flex; align-items: center; gap: 8px; margin: 14px 0 0; color: var(--muted); font-size: 12.5px; }
+.welcome-note .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); flex: 0 0 auto; }
+.welcome-account { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; color: #c6cdd6; font-size: 12.5px; line-height: 1.45; }
+.welcome-account .icon { color: var(--accent); }
+.welcome-account span { flex: 1; }
+.welcome-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.welcome-foot { margin: 12px 0 0; color: var(--faint); font-size: 12px; }
+
+/* ---- account menu (top bar) ---- */
+.account { position: relative; }
+.top-actions .account-btn { gap: 7px; padding: 0 8px 0 4px; }
+.account-btn > span:last-child { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; }
+.avatar {
+  display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; font-weight: 650; letter-spacing: 0.02em; color: #dcebfb;
+  background: #22406a; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+.avatar.role-admin { background: #5a3d86; }
+.avatar.role-observer { background: #2c3a48; color: #b9c4d0; }
+.avatar.kind-open, .avatar.kind-shared { background: var(--control); color: var(--muted); }
+.menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 270px; padding: 6px; display: grid; gap: 1px;
+  background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: 0 18px 48px rgb(0 0 0 / 0.6);
+  animation: drop 0.14s ease-out;
+}
+@keyframes drop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.menu-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.menu-head strong { display: block; }
+.menu-head small { color: var(--muted); font-size: 12px; }
+.menu button { display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 0 10px; border: 0; background: transparent; box-shadow: none; text-align: left; color: #d6dde6; }
+.menu button .icon { color: var(--muted); }
+.menu button:hover:not(:disabled) { background: var(--control-hover); }
+.menu-sep { height: 1px; margin: 4px 2px; background: var(--line); }
+.menu-note { margin: 2px 10px 6px; color: var(--faint); font-size: 12px; line-height: 1.4; }
+
+/* ---- account dialog ---- */
+.account-dialog { width: min(620px, 100%); }
+.acct-title { display: flex; align-items: center; gap: 12px; }
+.acct-title small { color: var(--muted); font-size: 12px; }
+.acct-tabs { display: flex; margin-top: 14px; }
+.acct-tabs > button { flex: 1; }
+.acct-section { display: grid; gap: 12px; margin-top: 14px; }
+.acct-section h3, .inline-form h3 { margin: 6px 0 0; font-size: 13.5px; font-weight: 650; }
+.acct-form { display: grid; gap: 10px; }
+.acct-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; }
+.acct-facts dt { color: var(--muted); }
+.acct-facts dd { margin: 0; }
+.acct-section .row > button { flex: 0 0 auto; }
+.logins, .users { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+.logins li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.logins li + li, .users li + li { border-top: 1px solid var(--line); }
+.logins li > span { flex: 1; min-width: 0; }
+.logins small, .user-name small { display: block; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logins button { min-height: 26px; font-size: 12px; }
+.users li { padding: 10px 12px; }
+.user-row { display: flex; align-items: center; gap: 10px; }
+.user-name { flex: 1; min-width: 0; }
+.user-name strong { display: flex; align-items: center; gap: 2px; }
+.user-row select { width: auto; min-height: 28px; }
+.user-actions { display: flex; gap: 16px; margin: 6px 0 0 40px; }
+.users-head { display: flex; align-items: center; gap: 12px; }
+.users-head .hint { flex: 1; }
+.inline-form { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg-sunken); }
+.users .inline-form { margin-left: 40px; }
+.pw-row { display: flex; gap: 6px; }
+.pw-row input { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+.pw-row button { flex: 0 0 auto; }
+.callout { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: 10px; background: var(--accent-bg); color: #d3e4f6; font-size: 12.5px; line-height: 1.5; }
+.callout .icon { color: var(--accent); margin-top: 2px; }
+.callout p { margin: 0; }
+.callout code { font-size: 11.5px; background: rgb(0 0 0 / 0.3); padding: 1px 4px; border-radius: 4px; }
+.authority .badge::before { display: none; }
+
+/* ---- setup guide (docked) ---- */
+.guide {
+  position: fixed; left: 14px; bottom: 64px; z-index: 45; width: min(380px, calc(100vw - 28px)); max-height: min(72vh, 640px); display: flex; flex-direction: column;
+  background: rgb(20 26 36 / 0.94); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: 0 24px 60px rgb(0 0 0 / 0.6);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.guide > header { display: flex; align-items: center; gap: 8px; padding: 10px 8px 8px 14px; color: var(--accent); }
+.guide > header strong { color: var(--text); font-size: 13.5px; }
+.guide-count { flex: 1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.icon-btn { width: 28px; min-height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.guide-steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 0 14px 10px; }
+.guide-steps li { flex: 1; }
+.guide-steps button { width: 100%; min-height: 0; height: 5px; padding: 0; border: 0; border-radius: 3px; background: var(--line-strong); box-shadow: none; }
+.guide-steps button:hover:not(:disabled) { background: #3b4859; }
+.guide-steps button.done { background: var(--ok); }
+.guide-steps button.cur { background: var(--accent); }
+.guide-steps button.cur.done { background: var(--ok); box-shadow: 0 0 0 1.5px var(--accent); }
+.guide-body { overflow-y: auto; padding: 4px 14px 12px; display: grid; gap: 10px; color: #c9d2de; line-height: 1.5; }
+.guide-body h3 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; }
+.guide-body h3 small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 500; letter-spacing: 0; }
+.guide-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px; color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-line); }
+.guide-icon.done { color: var(--ok); background: rgb(108 197 140 / 0.1); border-color: rgb(108 197 140 / 0.4); }
+.guide-body p { margin: 0; }
+.guide-body > button { justify-self: start; }
+.guide-fact { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.guide-fact .icon { color: var(--accent); }
+.guide-warn { padding: 7px 10px; border-radius: 8px; border: 1px solid rgb(226 177 85 / 0.35); background: rgb(226 177 85 / 0.08); color: #ecd6a8 !important; font-size: 12.5px; }
+.guide-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.guide-actions .stop { min-height: 32px; }
+.guide-choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.guide-choices button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 11px; min-height: 0; text-align: left; white-space: normal; border-radius: 9px; }
+.guide-choices small { color: var(--muted); font-size: 12px; }
+.guide-list { margin: 0; padding-left: 18px; display: grid; gap: 5px; }
+.guide > footer { display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px 12px; border-top: 1px solid var(--line); }
+.guide > footer button { min-width: 84px; }
+.guide-pill {
+  position: fixed; left: 14px; bottom: 64px; z-index: 45; display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 14px;
+  border-radius: 999px; background: rgb(20 26 36 / 0.94); border-color: var(--accent-line); color: #dcebfb; box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+  max-width: calc(100vw - 28px); overflow: hidden; text-overflow: ellipsis;
+}
+.guide-pill .icon { color: var(--accent); }
+/* Wide layout: dock over the 3D mount pane (just left of the 370 px control column) so the sky map stays clear. */
+@media (min-width: 1101px) { .guide, .guide-pill { left: auto; right: 390px; } }
+@media (max-width: 820px) {
+  .guide { left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 62vh; }
+  .guide-pill { left: 8px; bottom: 8px; }
+  .welcome-card { padding: 22px 18px 18px; }
+  .welcome-hero h1 { font-size: 24px; }
+  .welcome-features { grid-template-columns: 1fr; }
+  .welcome-account { flex-wrap: wrap; }
+  .account-btn > span:last-child { display: none; }
+  .user-actions, .users .inline-form { margin-left: 0; }
+}
 .hint { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .zone { color: var(--muted); font-weight: 400; font-size: 13px; }
 
