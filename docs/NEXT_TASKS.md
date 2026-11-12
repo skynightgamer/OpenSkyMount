@@ -13,7 +13,7 @@
    `:GU#` flags; then measure tracking error. A pulse-guide (`:Mg`) based fine loop would add a firmware-side dead
    man if OnStep renews pulses smoothly. **Blocked by hardware.**
 4. Session 11 follow-ups: audit the settings sheet with a screen reader; consider a "Follow mount" toggle in the
-   map toolbar instead of the layer row; merge `feat/session-11-polish-onstep` into `main` when approved.
+   map toolbar instead of the layer row.
 5. Plate solving from uploaded real images (camera frames), with distortion-tolerance tests on public-domain sky
    images.
 6. Pointing model: add cone-error and axis non-perpendicularity terms once real measurements exist.

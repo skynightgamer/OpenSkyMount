@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–10 in `main`; session 11 on branch `feat/session-11-polish-onstep`, not merged yet).
+_Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–11 merged; session 11 merged from `feat/session-11-polish-onstep`).
 
 ## Milestones
 
@@ -159,7 +159,7 @@ _Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–10 in
   **Not verified**: on a real phone, with a screen reader, frame rate on low-end devices with the skyline layer.
 - **Session 11 (2026-11-12)**: user request: tidy the settings panel and animate it like the account menu, a better
   selection ("focus") animation on the sky map, finish "alpha Lyr…" in the search hint, fix the sky-layer row, and
-  NEXT_TASKS items 3 and 4. Branch `feat/session-11-polish-onstep`.
+  NEXT_TASKS items 3 and 4. Branch `feat/session-11-polish-onstep`, merged into `main` at the user's request.
   (1) **Settings sheet** (D49, `Settings.tsx`, `presence.ts`): drops from the top bar with the account menu's
   animation and now also animates out (the account menu too); categories Display / Location / Mount & safety /
   Simulator / Connections; grouped rows with hints, switches, units; fixed footer with Cancel/Save and status
