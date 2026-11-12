@@ -15,7 +15,9 @@ def main() -> None:
     parser.add_argument("--state-dir", default=os.environ.get("OPENSKYMOUNT_STATE", "state"),
                         help="directory for persisted settings")
     parser.add_argument("--driver", default=os.environ.get("OPENSKYMOUNT_DRIVER", "sim"),
-                        help="sim (default) | tcp://host:port (OSM protocol, e.g. fake firmware)")
+                        help="sim (default) | tcp://host:port (OSM protocol, e.g. fake firmware) | "
+                             "onstep://host[:port] (LX200, OnStepX in alt-az mode; experimental) | "
+                             "onstep+serial:///dev/ttyUSB0@9600")
     parser.add_argument("--password", default=os.environ.get("OPENSKYMOUNT_PASSWORD") or None,
                         help="require this password to open the UI (recommended with --host 0.0.0.0). "
                         "Prefer the OPENSKYMOUNT_PASSWORD environment variable: command lines are visible to other users")
@@ -37,7 +39,7 @@ def main() -> None:
 
     discovery = None if args.no_alpaca or args.no_alpaca_discovery else (args.host, args.port)
     app = create_app(state_dir=Path(args.state_dir), driver=args.driver, password=args.password,
-                     alpaca=not args.no_alpaca, alpaca_discovery=discovery)
+                     alpaca=not args.no_alpaca, alpaca_discovery=discovery, listen=(args.host, args.port))
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

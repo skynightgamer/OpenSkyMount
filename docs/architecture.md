@@ -62,7 +62,7 @@ receive and send intents. All devices see the same mount state because there is 
 | **Skyfield** (MIT) | Pure Python, accurate (IAU 2000A nutation, DE ephemerides), offline with `skyfield-data`, vectorised, small | **Chosen** for all astronomy |
 | Astropy (BSD) | Authoritative (ERFA/SOFA), heavy, needs IERS downloads for best accuracy | Used **only** as an independent cross-check in tests |
 | Stellarium / Stellarium Web Engine (GPL-2.0 / AGPL-3.0) | Excellent planetarium, but copyleft and large, and hard to embed in a small MIT web UI | Not used. The sky map is our own (canvas). Stellarium can still drive the mount later through LX200/ASCOM adapters |
-| OnStepX (GPL-3.0) | Mature telescope firmware (alt-az supported, LX200 protocol, ESP32 support) | Recommended as an **alternative firmware path**. An LX200 adapter driver is planned (see hardware.md) |
+| OnStepX (GPL-3.0) | Mature telescope firmware (alt-az supported, LX200 protocol, ESP32 support) | Recommended as an **alternative firmware path**. Experimental LX200 adapter `mount/onstep_driver.py` (our own code; no OnStepX code used), tested against a fake endpoint only (see hardware.md) |
 | INDI (LGPL) / ASCOM Alpaca (open spec) | Standard telescope-control ecosystems | **Alpaca Telescope device implemented** (`server/alpaca.py`, see alpaca.md). INDI is not planned yet |
 | astrometry.net (BSD/GPL parts, large index files) | Gold-standard plate solver, but heavy and needs GB-sized indexes | Not used now |
 | **tetra3 / cedar-solve** (Apache-2.0) | Fast lost-in-space solver with a bundled database (10–30° FOV) and pure Python | **Chosen** for the optional plate-solving proof of concept |
@@ -94,7 +94,7 @@ Rejected alternatives:
 ## Extensibility
 - **Equatorial mounts**: add a `mount_type` capability and an HA/Dec target transform in the controller. The
   driver API is already axis-generic.
-- **New drivers** (OnStepX/LX200, INDI, Alpaca client): implement `MountDriver`. The controller and UI stay
+- **New drivers** (INDI, Alpaca client; OnStepX/LX200 exists as `onstep_driver.py`): implement `MountDriver`. The controller and UI stay
   unchanged.
 - **Payload profiles** (`config.PAYLOADS`): mass and inertia scale the acceleration, and long optics reduce the
   maximum altitude. The 3D view picks the matching shape.

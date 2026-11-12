@@ -54,6 +54,7 @@ async function waitText(page, selector, re, timeout = 60000) {
   await desk.fill('input[type="search"]', "");
   await desk.evaluate(() => document.activeElement && document.activeElement.blur());
   await desk.waitForTimeout(2500);
+  await desk.waitForSelector(".toast", { state: "detached", timeout: 15000 }); // toasts would cover the layer chips
   await desk.screenshot({ path: `${out}/desktop.png` });
 
   await desk.getByRole("button", { name: "Red light" }).click();

@@ -539,6 +539,55 @@ def register_alpaca(app: FastAPI, observatory: Callable[[], Observatory], unique
     return dev
 
 
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+WILDCARD_HOSTS = frozenset({"0.0.0.0", "", "::"})
+
+
+def lan_address() -> str | None:
+    """IPv4 address of the interface with the default route. Connecting a UDP socket sends no packet; it only asks the
+    OS which local address it would use (192.0.2.1 is a documentation address that is never contacted)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))
+            addr = s.getsockname()[0]
+    except OSError:
+        return None
+    return None if addr.startswith("127.") or addr == "0.0.0.0" else addr
+
+
+def connection_info(dev: AlpacaTelescope | None, listen: tuple[str, int] | None, request_host: str | None,
+                    request_port: int | None, discovery_enabled: bool, discovery_active: bool,
+                    login_required: bool, now: float) -> dict[str, Any]:
+    """What an Alpaca client needs to connect: addresses, port, device number, discovery and login."""
+    if dev is None:
+        return {"enabled": False}
+    host = listen[0] if listen else (request_host or "127.0.0.1")
+    port = listen[1] if listen else request_port
+    if host in WILDCARD_HOSTS:
+        lan_ip = lan_address()
+        addresses = ([lan_ip] if lan_ip else []) + ["127.0.0.1"]
+        lan = True
+    else:
+        addresses = ["127.0.0.1" if host == "localhost" else host]
+        lan = host not in LOOPBACK_HOSTS
+    return {
+        "enabled": True,
+        "device_type": "Telescope",
+        "device_number": 0,
+        "device_name": f"OpenSkyMount ({dev.o.driver.capabilities().name})",
+        "path": "/api/v1/telescope/0",
+        "port": port,
+        "listen_host": listen[0] if listen else None,
+        "lan": lan,
+        "addresses": addresses,
+        "discovery": {"enabled": discovery_enabled, "active": discovery_active, "port": DISCOVERY_PORT},
+        "auth": "basic" if login_required else "none",
+        "unique_id": dev.unique_id,
+        "clients": [{"name": f"Alpaca #{cid}", "address": addr, "idle_s": round(max(0.0, now - c.last_seen), 1)}
+                    for (addr, cid), c in sorted(dev.clients.items())],
+    }
+
+
 def unique_id_for(state_dir: str | None) -> str:
     """Stable per installation (derived from the state directory), as Alpaca requires."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"openskymount:{state_dir or 'default'}"))

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import unicodedata
 from functools import lru_cache
 from importlib import resources
@@ -19,10 +20,51 @@ GREEK = {
 }
 
 
+# Genitive of every IAU constellation, so "alpha Lyrae" finds "α Lyr" (Vega) like the abbreviation does.
+GENITIVE = {
+    "And": "Andromedae", "Ant": "Antliae", "Aps": "Apodis", "Aqr": "Aquarii", "Aql": "Aquilae", "Ara": "Arae",
+    "Ari": "Arietis", "Aur": "Aurigae", "Boo": "Bootis", "Cae": "Caeli", "Cam": "Camelopardalis", "Cnc": "Cancri",
+    "CVn": "Canum Venaticorum", "CMa": "Canis Majoris", "CMi": "Canis Minoris", "Cap": "Capricorni",
+    "Car": "Carinae", "Cas": "Cassiopeiae", "Cen": "Centauri", "Cep": "Cephei", "Cet": "Ceti",
+    "Cha": "Chamaeleontis", "Cir": "Circini", "Col": "Columbae", "Com": "Comae Berenices",
+    "CrA": "Coronae Australis", "CrB": "Coronae Borealis", "Crv": "Corvi", "Crt": "Crateris", "Cru": "Crucis",
+    "Cyg": "Cygni", "Del": "Delphini", "Dor": "Doradus", "Dra": "Draconis", "Equ": "Equulei", "Eri": "Eridani",
+    "For": "Fornacis", "Gem": "Geminorum", "Gru": "Gruis", "Her": "Herculis", "Hor": "Horologii", "Hya": "Hydrae",
+    "Hyi": "Hydri", "Ind": "Indi", "Lac": "Lacertae", "Leo": "Leonis", "LMi": "Leonis Minoris", "Lep": "Leporis",
+    "Lib": "Librae", "Lup": "Lupi", "Lyn": "Lyncis", "Lyr": "Lyrae", "Men": "Mensae", "Mic": "Microscopii",
+    "Mon": "Monocerotis", "Mus": "Muscae", "Nor": "Normae", "Oct": "Octantis", "Oph": "Ophiuchi", "Ori": "Orionis",
+    "Pav": "Pavonis", "Peg": "Pegasi", "Per": "Persei", "Phe": "Phoenicis", "Pic": "Pictoris", "Psc": "Piscium",
+    "PsA": "Piscis Austrini", "Pup": "Puppis", "Pyx": "Pyxidis", "Ret": "Reticuli", "Sge": "Sagittae",
+    "Sgr": "Sagittarii", "Sco": "Scorpii", "Scl": "Sculptoris", "Sct": "Scuti", "Ser": "Serpentis",
+    "Sex": "Sextantis", "Tau": "Tauri", "Tel": "Telescopii", "Tri": "Trianguli", "TrA": "Trianguli Australis",
+    "Tuc": "Tucanae", "UMa": "Ursae Majoris", "UMi": "Ursae Minoris", "Vel": "Velorum", "Vir": "Virginis",
+    "Vol": "Volantis", "Vul": "Vulpeculae",
+}
+_GREEK_WORD = re.compile(r"^([a-z]+)(\d*)$")
+
+
 def _norm(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text).lower().strip()
-    words = [GREEK.get(w, w) for w in text.replace("-", " ").split()]
+    # NFKD + dropping combining marks folds "Boötis" to "bootis"; Greek letters have no marks and survive.
+    text = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text))
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower().strip()
+    words = []
+    for w in text.replace("-", " ").split():
+        m = _GREEK_WORD.match(w)
+        words.append(GREEK[m[1]] + m[2] if m and m[1] in GREEK else w)  # "alpha1" -> "α1"
     return " ".join(words)
+
+
+def _desig_aliases(desig: str) -> list[str]:
+    """Extra search keys for a Bayer/Flamsteed designation: genitive form, and without the superscript digit."""
+    letter, _, con = desig.partition(" ")
+    gen = GENITIVE.get(con)
+    if not gen:
+        return []
+    out = [f"{letter} {gen}"]
+    base = letter.rstrip("0123456789")
+    if base and base != letter and not base.isdigit():  # "α1 Cen" is also found as "α Cen" / "α Centauri"
+        out += [f"{base} {con}", f"{base} {gen}"]
+    return out
 
 
 class Catalog:
@@ -44,7 +86,8 @@ class Catalog:
         self._con_names = {c["id"]: c["name"] for c in self.constellations}
         self._index: list[tuple[str, str, dict[str, Any]]] = []
         for s in self.stars:
-            for key in filter(None, (s["name"], s["desig"], f"hip {s['hip']}", f"hip{s['hip']}")):
+            aliases = _desig_aliases(s["desig"]) if s["desig"] else []
+            for key in filter(None, (s["name"], s["desig"], f"hip {s['hip']}", f"hip{s['hip']}", *aliases)):
                 self._index.append((_norm(key), "star", s))
         for d in self.dsos:
             for key in filter(None, (d["id"], d["name"], d["desig"])):

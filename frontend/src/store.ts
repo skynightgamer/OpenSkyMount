@@ -82,7 +82,7 @@ export interface PublicConfig {
   };
   payloads: Record<string, Payload>;
   effective_limits: Record<string, number>;
-  capabilities: { name: string; kind: string; simulated: boolean; supports_time_warp: boolean; has_axis_encoders: boolean };
+  capabilities: { name: string; kind: string; simulated: boolean; supports_time_warp: boolean; has_axis_encoders: boolean; firmware?: string };
   injectable_faults: string[];
   version: string;
   plate_solver: boolean;

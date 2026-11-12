@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, timeZones, toZonedInput, zoneLabel } from "../format";
+import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, toZonedInput, zoneLabel } from "../format";
 import { Icon, type IconName } from "./Icon";
 import { ExposurePlanner, TonightList } from "./Planner";
 import { SatellitePasses } from "./Session";
@@ -7,12 +7,10 @@ import {
   MANUAL_SPEEDS,
   canControl,
   command,
-  getState,
   isController,
   releaseControl,
   requestControl,
   select,
-  setPrefs,
   setState,
   simNow,
   toast,
@@ -113,7 +111,7 @@ export function SearchPanel() {
     <section className="panel search">
       <input
         type="search"
-        placeholder="Search: Jupiter, Vega, M31, alpha Lyr…"
+        placeholder="Search: Jupiter, Vega, M31, alpha Lyrae"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
@@ -564,157 +562,6 @@ export function ClockPanel() {
         </>
       )}
     </Section>
-  );
-}
-
-// ------------------------------------------------------------------ settings
-export function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const cfg = useStore((s) => s.config);
-  const ctl = useStore((s) => isController(s));
-  const [obs, setObs] = useState(() => ({ ...getState().config!.config.observer }));
-  const [sim, setSim] = useState(() => ({ ...getState().config!.config.sim }));
-  const [control, setControl] = useState(() => ({ ...getState().config!.config.control }));
-  const [payload, setPayload] = useState(() => getState().config!.config.payload);
-  if (!cfg) return null;
-  const save = async () => {
-    const r = await command("set_config", { observer: obs, sim, control, payload });
-    if (r.ok) {
-      toast("Settings saved");
-      onClose();
-    }
-  };
-  const geo = () => {
-    if (!navigator.geolocation) return toast("Geolocation not available", "error");
-    navigator.geolocation.getCurrentPosition(
-      (p) => setObs({ ...obs, latitude: +p.coords.latitude.toFixed(4), longitude: +p.coords.longitude.toFixed(4), elevation_m: Math.round(p.coords.altitude ?? obs.elevation_m), name: "My location" }),
-      (e) => toast(`Location unavailable: ${e.message}`, "error"),
-    );
-  };
-  const num = (label: string, value: number, set: (v: number) => void, step = 0.01, help?: string) => (
-    <label title={help}>
-      <span>{label}</span>
-      <input type="number" step={step} value={value} onChange={(e) => set(Number(e.target.value))} />
-    </label>
-  );
-  const simNum = (key: string, label: string, step = 0.01, help?: string) =>
-    num(label, sim[key] as number, (v) => setSim({ ...sim, [key]: v }), step, help);
-  return (
-    <div className="modal" role="dialog" aria-label="Settings">
-      <div className="modal-body">
-        <header>
-          <h2>Settings</h2>
-          <button onClick={onClose} aria-label="Close">Close</button>
-        </header>
-        <DisplaySettings />
-        {!ctl && <p className="warn-text">Take control to change the settings below.</p>}
-        <fieldset>
-          <legend>Observer location</legend>
-          <label>
-            <span>Name</span>
-            <input value={obs.name} onChange={(e) => setObs({ ...obs, name: e.target.value })} />
-          </label>
-          {num("Latitude (°, N+)", obs.latitude, (v) => setObs({ ...obs, latitude: v }), 0.0001)}
-          {num("Longitude (°, E+)", obs.longitude, (v) => setObs({ ...obs, longitude: v }), 0.0001)}
-          {num("Elevation (m)", obs.elevation_m, (v) => setObs({ ...obs, elevation_m: v }), 1)}
-          <button type="button" onClick={geo}>Use my location (optional)</button>
-        </fieldset>
-        <fieldset>
-          <legend>Payload</legend>
-          <select value={payload} onChange={(e) => setPayload(e.target.value)}>
-            {Object.values(cfg.payloads).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}, {p.mass_kg} kg, max alt {p.max_altitude}°
-              </option>
-            ))}
-          </select>
-        </fieldset>
-        <fieldset>
-          <legend>Pointing &amp; safety</legend>
-          {num("GoTo tolerance (°)", control.goto_tolerance_deg as number, (v) => setControl({ ...control, goto_tolerance_deg: v }), 0.005)}
-          {num("Min. target altitude (°)", control.min_target_altitude as number, (v) => setControl({ ...control, min_target_altitude: v }), 1)}
-          {num("Sun exclusion radius (°)", control.sun_exclusion_deg as number, (v) => setControl({ ...control, sun_exclusion_deg: v }), 1)}
-          <label className="check">
-            <input type="checkbox" checked={control.track_after_goto as boolean} onChange={(e) => setControl({ ...control, track_after_goto: e.target.checked })} />
-            <span>Track automatically after GoTo</span>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={control.auto_unwind as boolean} onChange={(e) => setControl({ ...control, auto_unwind: e.target.checked })} />
-            <span>Unwind cable wrap automatically</span>
-          </label>
-        </fieldset>
-        {cfg.capabilities.simulated && (
-          <fieldset>
-            <legend>Simulated imperfections</legend>
-            {simNum("command_latency_s", "Command latency (s)", 0.01)}
-            {simNum("backlash_alt", "Backlash alt (°)", 0.01)}
-            {simNum("backlash_az", "Backlash az (°)", 0.01)}
-            {simNum("az_zero_offset", "Azimuth zero error (°)", 0.05, "True north misalignment, uncorrected until Sync or plate solve")}
-            {simNum("alt_zero_offset", "Altitude zero error (°)", 0.05)}
-            {simNum("tilt_magnitude", "Base tilt (°)", 0.05)}
-            {simNum("tilt_direction", "Tilt direction (az °)", 1)}
-            {simNum("encoder_noise", "Encoder noise (° RMS)", 0.001)}
-            <FaultButtons faults={cfg.injectable_faults} />
-          </fieldset>
-        )}
-        <div className="row">
-          <button className="primary" disabled={!ctl} onClick={save}>
-            Save
-          </button>
-          <button onClick={onClose}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Per-device display settings: applied at once, stored in this browser, no control authority needed.
-function DisplaySettings() {
-  const prefs = useStore((s) => s.prefs);
-  const zones = useState(() => timeZones())[0];
-  const now = simNow();
-  return (
-    <fieldset>
-      <legend>Display (this device)</legend>
-      <label>
-        <span>Angles</span>
-        <select value={prefs.angles} onChange={(e) => setPrefs({ angles: e.target.value as "dms" | "decimal" })} aria-label="Angle format">
-          <option value="dms">Sexagesimal</option>
-          <option value="decimal">Decimal degrees</option>
-        </select>
-      </label>
-      <label>
-        <span>Time zone</span>
-        <select value={prefs.timeZone} onChange={(e) => setPrefs({ timeZone: e.target.value })} aria-label="Time zone">
-          <option value="device">This device ({resolveZone("device")})</option>
-          {zones.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="hint">
-        Sexagesimal: 18h 36m 56s, +38° 47′ 01″. Decimal: 279.2347°, +38.7837°. Times are shown in{" "}
-        {resolveZone(prefs.timeZone)}
-        {zoneLabel(now, prefs.timeZone) !== resolveZone(prefs.timeZone) ? ` (${zoneLabel(now, prefs.timeZone)})` : ""}. Saved in this
-        browser only; other devices keep their own choice.
-      </p>
-    </fieldset>
-  );
-}
-
-function FaultButtons({ faults }: { faults: string[] }) {
-  const active = useStore((s) => s.mount?.driver.motor.injected_faults ?? EMPTY);
-  const ctl = useStore((s) => isController(s));
-  return (
-    <div className="faults">
-      <span>Fault injection:</span>
-      {faults.map((f) => (
-        <button key={f} disabled={!ctl} className={active.includes(f) ? "warnbtn" : ""} onClick={() => command("inject_fault", { fault: f, active: !active.includes(f) })}>
-          {f}
-        </button>
-      ))}
-    </div>
   );
 }
 

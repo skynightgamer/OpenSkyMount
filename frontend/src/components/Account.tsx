@@ -1,6 +1,7 @@
 // Sign-in, the account menu in the top bar and the account dialog (profile, password and logins, users, first admin).
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { formatDateTime } from "../format";
+import { usePresence } from "../presence";
 import { estopHttp, login, logout, refreshAuth, setupAdmin, toast, useStore, type AuthUser, type Role } from "../store";
 import { Icon, Logo } from "./Icon";
 import { Starfield } from "./Welcome";
@@ -177,6 +178,7 @@ export type AccountTab = "profile" | "security" | "users" | "setup";
 export function AccountMenu({ onAccount, onWelcome, onGuide }: { onAccount: (t: AccountTab) => void; onWelcome: () => void; onGuide: () => void }) {
   const info = useStore((s) => s.authInfo);
   const [open, setOpen] = useState(false);
+  const presence = usePresence(open, 160);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -202,8 +204,8 @@ export function AccountMenu({ onAccount, onWelcome, onGuide }: { onAccount: (t: 
         <Avatar user={user} size={22} />
         <span>{name}</span>
       </button>
-      {open && (
-        <div className="menu" role="menu">
+      {presence.mounted && (
+        <div className="menu" role="menu" data-state={presence.closing ? "closing" : "open"}>
           <div className="menu-head">
             <Avatar user={user} size={36} />
             <div>

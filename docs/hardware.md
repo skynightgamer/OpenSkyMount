@@ -42,12 +42,43 @@ promises. Validate every choice on a bench before trusting it with a payload.
    surface: setpoints, rates, stop, E-stop, home, sync, status. The host already does all the astronomy and
    tracking math, and `fake_firmware.py` is the executable reference.
 2. **OnStepX** (GPL-3.0, mature, supports alt-az and ESP32, speaks LX200). The firmware does its own astronomy.
-   OpenSkyMount would need an `OnStepDriver` adapter that sends target RA/Dec or alt/az through LX200 commands
-   instead of axis setpoints. This adapter is planned, not implemented.
+   OpenSkyMount talks to it through the experimental `OnStepMountDriver` (`mount/onstep_driver.py`, D48):
+   `--driver onstep://<host>[:9999]` (Wi-Fi command channel) or `--driver onstep+serial:///dev/ttyUSB0@9600`.
+   **Tested only against `fake_onstep.py`, not against real OnStepX firmware** (see the checklist below).
 
 Recommendation: start with OSM/1 on an ESP32 for the first bench test, because it maps one-to-one onto the
 simulator that is already tested. Evaluate OnStepX in parallel if you want standard LX200 compatibility on the
 device itself.
+
+### OnStepX adapter: how it works and what to check on real firmware
+The controller still owns astronomy, tracking and safety; the adapter maps its axis setpoints onto LX200:
+
+| Controller asks for | Adapter sends |
+|---|---|
+| Position far from the current one (> 0.5°) | Firmware GoTo: `:Sz DDD*MM'SS#`, `:Sa sDD*MM'SS#`, `:MA#`. Azimuth moves over 170° go in legs of ≤ 150° so the firmware's shortest path is the direction OpenSkyMount chose |
+| Position near the current one (tracking, fine moves) | Rate loop at 10 Hz: feed-forward + error / 0.5 s per axis via `:RA<deg/s>#` (azimuth) and `:RE<deg/s>#` (altitude) with `:Mw/:Me/:Mn/:Ms#`; `:Qe/:Qw/:Qn/:Qs#` stop one axis |
+| Manual slew | The same directional moves at the requested rates |
+| Stop, E-stop, disconnect | `:Q#` (E-stop is also latched in the adapter until Reset) |
+| Home | `:hC#` (OnStep's home position) |
+| Sync | An offset in the adapter; the firmware's model is not changed |
+
+At connect it checks the mount mode (ACK must answer `A`; equatorial setups are refused), switches replies to
+arc-second precision (`:U#`) if needed and turns the firmware's own tracking off (`:Td#`). Positions are polled with
+`:GA#`, `:GZ#` and `:GU#` (10 Hz); azimuth is unwrapped into multi-turn mount coordinates.
+
+**Safety limits of this path.** LX200 has no host watchdog: a directional move continues if the link drops or the
+host dies. The adapter sends `:Q#` on stop, E-stop and disconnect and when the controller loop stops calling it for
+1 s, faults (`direction_mismatch`) and stops if an axis moves against the commanded direction, and faults
+(`goto_rejected`) if a GoTo is refused or the firmware turns the other way round in azimuth. A physical E-stop and
+OnStep's own limits remain mandatory.
+
+**To verify on real OnStepX (assumptions taken from the command reference, not measured):**
+1. `:Mw#` increases azimuth and `:Mn#` raises the altitude on an alt-az OnStep (the adapter faults if not).
+2. `:RA`/`:RE` accept small rates (sidereal ≈ 0.004°/s) and apply to the following `:M?#` moves with tracking off.
+3. `:GA#`/`:GZ#` report the axis position without OnStep's pointing model and refraction (disable both in OnStep,
+   or Sync will fight them).
+4. `:MA#` reply codes and the `N` (no GoTo) flag in `:GU#`.
+5. Set OnStep's azimuth limits at least as wide as OpenSkyMount's cable-wrap limits (default ±270°).
 
 ## Integration plan
 1. Bench: one axis, stepper and driver, run the fake-firmware test suite (`tests/test_protocol.py`) against the real

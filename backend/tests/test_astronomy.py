@@ -156,6 +156,14 @@ def test_search_and_resolve(engine: AstronomyEngine) -> None:
 
     assert engine.catalog.search("jupiter", planets=PLANETS)[0]["id"] == "planet:jupiter"
     assert engine.catalog.search("alpha lyr")[0]["id"] == "hip:91262"
+    # Full genitive names, partial typing, superscript components and diacritics.
+    assert engine.catalog.search("alpha Lyrae")[0]["id"] == "hip:91262"
+    assert engine.catalog.search("alpha Lyra")[0]["id"] == "hip:91262"
+    assert engine.catalog.search("beta Ursae Majoris")[0]["name"].startswith("Merak")
+    assert engine.catalog.search("alpha Centauri")[0]["id"] == "hip:71683"  # α1 Cen
+    assert engine.catalog.search("alpha2 Cen")[0]["id"] == "hip:71681"
+    assert engine.catalog.search("61 Cygni")[0]["id"] == "hip:104214"
+    assert engine.catalog.search("alpha Boötis")[0]["name"].startswith("Arcturus")
     assert engine.catalog.search("andromeda galaxy")[0]["id"] == "dso:M31"
     assert engine.catalog.search("sir")[0]["name"].startswith("Sirius")
     assert engine.resolve("M42").id == "dso:M42"

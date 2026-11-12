@@ -9,8 +9,10 @@ Implementations:
 * ``SimulatedMountDriver``  – in-process physics simulation (default)
 * ``ProtocolMountDriver``   – OSM line protocol over TCP/serial (ESP32 firmware
                                or the bundled fake-firmware endpoint)
+* ``OnStepMountDriver``     – LX200 commands (OnStepX in alt-az mode) over TCP/serial,
+                               or the bundled fake OnStep endpoint
 
-A future OnStepX/LX200 or INDI/Alpaca adapter would implement the same class.
+A future INDI or Alpaca-client adapter would implement the same class.
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ class Fault:
     CONNECTION_LOST = "connection_lost"
     POSITION_UNKNOWN = "position_unknown"  # not homed / reference lost
     ESTOP = "estop"
+    DIRECTION_MISMATCH = "direction_mismatch"  # an axis moved against the commanded direction (LX200 adapter)
+    GOTO_REJECTED = "goto_rejected"  # the controller firmware refused a GoTo (LX200 adapter)
 
 
 @dataclass

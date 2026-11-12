@@ -290,6 +290,32 @@ def test_alpaca_can_be_disabled(tmp_path) -> None:
         assert c.get(f"{BASE}/name").status_code == 404
 
 
+def test_connection_info_for_settings(tmp_path) -> None:
+    """GET /api/alpaca: what the Settings page shows to connect an Alpaca program."""
+    with TestClient(create_app(observatory=make_obs(tmp_path), listen=("127.0.0.1", 8123))) as c:
+        info = c.get("/api/alpaca").json()
+        assert info["enabled"] and info["device_type"] == "Telescope" and info["device_number"] == 0
+        assert info["path"] == BASE and info["port"] == 8123
+        assert info["addresses"] == ["127.0.0.1"] and info["lan"] is False  # loopback only: say so in the UI
+        assert info["discovery"] == {"enabled": False, "active": False, "port": 32227}
+        assert info["auth"] == "none" and info["clients"] == []
+        assert info["unique_id"] == c.get("/management/v1/configureddevices").json()["Value"][0]["UniqueID"]
+        Alpaca(c, client_id=42).ok("connected", Connected=True)
+        clients = c.get("/api/alpaca").json()["clients"]
+        assert [x["name"] for x in clients] == ["Alpaca #42"] and clients[0]["idle_s"] >= 0
+    # Listening on all interfaces: the LAN address (if the machine has a route) and loopback; login needed.
+    with TestClient(create_app(observatory=Observatory(state_dir=tmp_path / "b"), password="pw-123456",
+                               listen=("0.0.0.0", 8000))) as c:
+        assert c.get("/api/alpaca").status_code == 401  # behind the login like the rest of /api
+        token = c.post("/api/login", json={"password": "pw-123456"})
+        assert token.status_code == 200
+        info = c.get("/api/alpaca").json()
+        assert info["lan"] is True and info["addresses"][-1] == "127.0.0.1" and info["auth"] == "basic"
+        assert all(not a.startswith("127.") for a in info["addresses"][:-1])
+    with TestClient(create_app(observatory=Observatory(state_dir=tmp_path / "c"), alpaca=False)) as c:
+        assert c.get("/api/alpaca").json() == {"enabled": False}
+
+
 def _free_port(kind: int = socket.SOCK_STREAM) -> int:
     with socket.socket(socket.AF_INET, kind) as s:
         s.bind(("127.0.0.1", 0))

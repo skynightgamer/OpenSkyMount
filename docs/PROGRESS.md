@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-11-12 (session 10)._ Main branch: `main` (sessions 6–9 merged; session 10 worked directly on `main` at the user's request).
+_Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–10 in `main`; session 11 on branch `feat/session-11-polish-onstep`, not merged yet).
 
 ## Milestones
 
@@ -16,6 +16,7 @@ _Last updated: 2026-11-12 (session 10)._ Main branch: `main` (sessions 6–9 mer
 | Observing sessions, satellites/comets, telemetry replay, gamepad, phone layout | **Done, verified (sim)** | Target queue; TLE/MPC elements (user-supplied); fast satellite tracking; JSONL recordings + replay; Gamepad API; hand-controller layout + PWA. See docs/observing.md |
 | Welcome screen, simulator setup guide | **Done, verified (sim, browser E2E)** | First-run welcome, 7-step docked guide with live completion checks. See D46 |
 | Accounts (log in/out, roles, account management) | **Done, verified (tests + browser E2E)** | Admin/operator/observer, first-admin setup from the server computer, profile, password change, logins list, user admin, CLI. See D47 |
+| OnStepX / LX200 adapter | **Experimental; verified against a fake endpoint only** | `onstep://host:9999`; firmware GoTo for long moves, rate loop for tracking, direction and wrong-way-round checks. Real OnStepX: blocked by hardware. See D48 |
 | CI | **Done** | GitHub Actions: backend (3.11, 3.13 + extras), frontend, browser E2E |
 
 ## Session log
@@ -156,3 +157,31 @@ _Last updated: 2026-11-12 (session 10)._ Main branch: `main` (sessions 6–9 mer
   136 backend tests (+18 accounts; 8 skipped, optional extras not installed), 42 frontend unit tests (+9 scenery) and
   all four browser E2E scripts (new `frontend/e2e/accounts.cjs`) pass; README screenshots regenerated.
   **Not verified**: on a real phone, with a screen reader, frame rate on low-end devices with the skyline layer.
+- **Session 11 (2026-11-12)**: user request: tidy the settings panel and animate it like the account menu, a better
+  selection ("focus") animation on the sky map, finish "alpha Lyr…" in the search hint, fix the sky-layer row, and
+  NEXT_TASKS items 3 and 4. Branch `feat/session-11-polish-onstep`.
+  (1) **Settings sheet** (D49, `Settings.tsx`, `presence.ts`): drops from the top bar with the account menu's
+  animation and now also animates out (the account menu too); categories Display / Location / Mount & safety /
+  Simulator / Connections; grouped rows with hints, switches, units; fixed footer with Cancel/Save and status
+  (unsaved, needs control); unsaved dots per category; Escape and backdrop cancel, focus returns to the button; the
+  guide's "Enter coordinates…" opens the Location page. Phone: full-width sheet, categories as a scrolling row.
+  (2) **Sky-layer row**: chips wrap on the left, "Follow mount" stays pinned top-right behind a divider (it used to
+  drop alone onto the second row's right edge).
+  (3) **Selection reticle**: four arcs that settle in with one soft ripple, glide along the great circle to the next
+  selection and resize, sized by brightness, name tag rises in; replaces the rotating cyan corner brackets
+  (`reticleAt`/`slerp` in `scenery.ts`, 4 new unit tests).
+  (4) **Search**: placeholder reads "alpha Lyrae"; the catalog now also finds genitive designations ("alpha Lyrae",
+  "beta Ursae Majoris", "61 Cygni", "alpha Centauri" → α1 Cen, "alpha2 Cen", "Boötis" with or without the diaeresis).
+  (5) **Alpaca connection details** (NEXT_TASKS 3): `GET /api/alpaca` (addresses, port, device 0, URL, discovery
+  state, login, connected clients) shown in Settings → Connections with copy buttons and a note when the server only
+  listens on this computer; `create_app(listen=…)` is passed by the CLI.
+  (6) **OnStepX/LX200 adapter** (NEXT_TASKS 4, D48): `mount/lx200.py`, `mount/onstep_driver.py`,
+  `mount/fake_onstep.py` (+ `openskymount-fake-onstep`), `--driver onstep://host[:port]`. 12 new tests over TCP:
+  GoTo/manual/E-stop through the controller, tracking a moving setpoint with rates only (< 15″), multi-turn azimuth
+  through the firmware's 0/360 seam with GoTo legs, sync offset, reversed wiring detected and stopped, host watchdog,
+  link loss and reconnect, handshake (equatorial refused, precision toggle), firmware GoTo refusal and wrong-way-round
+  turns become faults, strict solar policy. Found while testing: if the firmware's azimuth limits force the long way
+  round, re-issuing the GoTo would loop forever; now a `goto_rejected` fault.
+  149 backend tests (8 skipped, optional extras not installed), 46 frontend unit tests and all four browser E2E
+  scripts pass; README screenshots regenerated. **Not verified**: real OnStepX firmware (no hardware), the settings
+  sheet with a screen reader.
