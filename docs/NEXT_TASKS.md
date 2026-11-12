@@ -8,8 +8,12 @@
    editable queue items (duration/start time) and per-item "GoTo only"; visual magnitudes for satellites.
 2. Alpaca follow-ups: run ASCOM ConformU against `/api/v1/telescope/0` (needs a machine that can download it) and
    test with N.I.N.A.; then `MoveAxis` with a dead-man design (D32) and `PulseGuide`.
-3. Show Alpaca connection details (address, port, device 0) in the Settings panel.
-4. LX200 / OnStepX driver adapter (`mount/onstep_driver.py`) with a fake LX200 endpoint for tests.
+3. OnStepX adapter on real firmware (D48, docs/hardware.md checklist): direction of `:Mw#`/`:Mn#` in alt-az mode,
+   small `:RA`/`:RE` rates with tracking off, `:GA#`/`:GZ#` without OnStep's model/refraction, `:MA#` codes and the
+   `:GU#` flags; then measure tracking error. A pulse-guide (`:Mg`) based fine loop would add a firmware-side dead
+   man if OnStep renews pulses smoothly. **Blocked by hardware.**
+4. Session 11 follow-ups: audit the settings sheet with a screen reader; consider a "Follow mount" toggle in the
+   map toolbar instead of the layer row; merge `feat/session-11-polish-onstep` into `main` when approved.
 5. Plate solving from uploaded real images (camera frames), with distortion-tolerance tests on public-domain sky
    images.
 6. Pointing model: add cone-error and axis non-perpendicularity terms once real measurements exist.

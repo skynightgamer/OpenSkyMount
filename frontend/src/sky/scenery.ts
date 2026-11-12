@@ -130,6 +130,63 @@ export function flightAt(f: Flight, now: number): ViewPose & { done: boolean } {
   };
 }
 
+// ------------------------------------------------------------------ selection reticle
+/** Spherical linear interpolation between unit vectors (t = 0: a, t = 1: b). */
+export function slerp(a: Vec3, b: Vec3, t: number): Vec3 {
+  const dot = Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+  const ang = Math.acos(dot);
+  if (ang < 1e-6) return b;
+  if (Math.PI - ang < 1e-6) return t < 0.5 ? a : b; // antipodal: no unique path, jump halfway
+  const s = Math.sin(ang);
+  const ka = Math.sin((1 - t) * ang) / s;
+  const kb = Math.sin(t * ang) / s;
+  return [ka * a[0] + kb * b[0], ka * a[1] + kb * b[1], ka * a[2] + kb * b[2]];
+}
+
+export function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3;
+}
+
+export function easeOutQuint(t: number): number {
+  return 1 - (1 - t) ** 5;
+}
+
+/** Durations (ms) of the selection reticle: settle in, glide between selections, and the one-time ripple. */
+export const RETICLE = { enterMs: 420, glideMs: 360, rippleDelayMs: 260, rippleMs: 760 };
+
+export interface ReticlePose {
+  radius: number; // ring radius (px)
+  alpha: number; // ring opacity
+  glide: number; // 0..1 progress from the previous selection's position (1 = on the new object)
+  ripple: number; // radius of the expanding ripple ring (px), 0 = none
+  rippleAlpha: number;
+  label: number; // name tag opacity
+}
+
+/**
+ * Selection reticle `ageMs` after a selection. A fresh selection settles in from a wider, transparent ring and sends
+ * out one soft ripple; with `fromR` (a previous selection was on screen) the ring glides over and resizes instead.
+ */
+export function reticleAt(ageMs: number, R: number, fromR: number | null, reduced = false): ReticlePose {
+  if (reduced) return { radius: R, alpha: 1, glide: 1, ripple: 0, rippleAlpha: 0, label: 1 };
+  const t = Math.max(0, ageMs);
+  if (fromR != null) {
+    const g = easeInOutCubic(Math.min(1, t / RETICLE.glideMs));
+    return { radius: fromR + (R - fromR) * g, alpha: 1, glide: g, ripple: 0, rippleAlpha: 0, label: smooth(RETICLE.glideMs * 0.6, RETICLE.glideMs + 140, t) };
+  }
+  const e = easeOutQuint(Math.min(1, t / RETICLE.enterMs));
+  const k = (t - RETICLE.rippleDelayMs) / RETICLE.rippleMs;
+  const rippling = k > 0 && k < 1;
+  return {
+    radius: R * (1 + 0.85 * (1 - e)),
+    alpha: e,
+    glide: 1,
+    ripple: rippling ? R * (1 + 1.5 * easeOutCubic(k)) : 0,
+    rippleAlpha: rippling ? 0.5 * (1 - k) ** 2 : 0,
+    label: smooth(140, 380, t),
+  };
+}
+
 // ------------------------------------------------------------------ labels
 const POINTS16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 /** Compass point (16-wind) for an azimuth. */

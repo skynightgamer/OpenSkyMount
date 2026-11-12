@@ -30,7 +30,7 @@ from ..mount.sequencer import Sequencer
 from ..mount.sim_driver import INJECTABLE_FAULTS, SimulatedMountDriver
 from .account_routes import register_account_routes
 from .accounts import AccountStore
-from .alpaca import AlpacaTelescope, register_alpaca, start_discovery, unique_id_for
+from .alpaca import AlpacaTelescope, connection_info, register_alpaca, start_discovery, unique_id_for
 from .auth import COOKIE, OPEN_PATHS, Auth, Identity
 from .recorder import RecorderError, TelemetryRecorder
 from .sessions import SessionManager
@@ -62,6 +62,12 @@ def make_driver(spec: str, cfg: AppConfig, now: float) -> MountDriver:
         from ..mount.protocol_driver import ProtocolMountDriver
 
         return ProtocolMountDriver(spec, cfg.effective_limits())
+    from ..mount.onstep_driver import SCHEMES as LX200_SCHEMES
+
+    if spec.startswith(LX200_SCHEMES):
+        from ..mount.onstep_driver import OnStepMountDriver
+
+        return OnStepMountDriver(spec, cfg.effective_limits())
     raise ValueError(f"unknown driver {spec!r}")
 
 
@@ -393,11 +399,13 @@ def create_app(
     password: str | None = None,
     alpaca: bool = True,
     alpaca_discovery: tuple[str, int] | None = None,
+    listen: tuple[str, int] | None = None,
 ) -> FastAPI:
     """``password``: require a login for the UI and API (``None`` = open, the default for localhost use).
 
     ``alpaca``: serve the ASCOM Alpaca Telescope device and management API. ``alpaca_discovery``: (bind host, HTTP
-    port) to answer Alpaca UDP discovery broadcasts on port 32227 (``None``: no discovery responder).
+    port) to answer Alpaca UDP discovery broadcasts on port 32227 (``None``: no discovery responder). ``listen``: the
+    (host, port) the HTTP server is bound to, shown as Alpaca connection details (``None``: taken from the request).
     """
     obs_holder: dict[str, Observatory] = {}
     sd: Path | None = observatory.state_dir if observatory else (
@@ -418,6 +426,7 @@ def create_app(
             o.housekeeping.append(alpaca_dev.purge)
             if alpaca_discovery is not None:
                 discovery = await start_discovery(*alpaca_discovery)
+        app.state.alpaca_discovery_active = discovery is not None
         o.start()
         try:
             yield
@@ -591,6 +600,12 @@ def create_app(
     @app.get("/api/config")
     def config() -> JSONResponse:
         return JSONResponse(_finite(obsv().public_config()))
+
+    @app.get("/api/alpaca")
+    async def alpaca_info(request: Request) -> dict[str, Any]:
+        """Connection details for Alpaca clients (shown in Settings → Connections)."""
+        return connection_info(alpaca_dev, listen, request.url.hostname, request.url.port, alpaca_discovery is not None,
+                               bool(getattr(app.state, "alpaca_discovery_active", False)), auth.required, time.time())
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket, name: str = "client") -> None:

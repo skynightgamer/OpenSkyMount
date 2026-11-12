@@ -5,11 +5,11 @@ import {
   EventLog,
   MotionPanel,
   SearchPanel,
-  SettingsPanel,
   TargetPanel,
   Telemetry,
 } from "./components/Panels";
 import { AccountDialog, AccountMenu, LoginScreen, type AccountTab } from "./components/Account";
+import { SettingsPanel, type SettingsTab } from "./components/Settings";
 import { SetupGuide, resetGuide } from "./components/Guide";
 import { Icon, Logo } from "./components/Icon";
 import { WelcomeScreen, markWelcomeSeen, welcomeDue } from "./components/Welcome";
@@ -94,7 +94,9 @@ function Main() {
   };
   const canMove = useStore((s) => isController(s) && !!s.mount && !["emergency_stop", "fault", "disconnected"].includes(s.mount.mode));
   useGamepad(canMove, MANUAL_SPEEDS);
-  const [settings, setSettings] = useState(false);
+  const [settings, setSettings] = useState<{ open: boolean; tab: SettingsTab }>({ open: false, tab: "display" });
+  const openSettings = (t: SettingsTab = "display") => setSettings({ open: true, tab: t });
+  const closeSettings = () => setSettings((s) => ({ ...s, open: false }));
   const [follow, setFollow] = useState(false);
   const [layers, setLayersState] = useState<Layers>(loadLayers);
   const setLayers = (l: Layers) => {
@@ -161,7 +163,13 @@ function Main() {
             <Icon name="moon" />
             <span>Red light</span>
           </button>
-          <button className="ghost" onClick={() => setSettings(true)} disabled={!site}>
+          <button
+            className={`ghost${settings.open ? " sel" : ""}`}
+            onClick={() => (settings.open ? closeSettings() : openSettings())}
+            disabled={!site}
+            aria-haspopup="dialog"
+            aria-expanded={settings.open}
+          >
             <Icon name="sliders" />
             <span>Settings</span>
           </button>
@@ -179,13 +187,15 @@ function Main() {
         <section className="col sky-col">
           <SearchPanel />
           <SkyMap layers={layers} followMount={follow} />
-          <div className="layers" role="group" aria-label="Sky map layers">
-            {(Object.keys(layers) as (keyof Layers)[]).map((k) => (
-              <label key={k} className="chip">
-                <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {LAYER_LABEL[k]}
-              </label>
-            ))}
-            <label className="chip follow">
+          <div className="layers">
+            <div className="layer-chips" role="group" aria-label="Sky map layers">
+              {(Object.keys(layers) as (keyof Layers)[]).map((k) => (
+                <label key={k} className="chip">
+                  <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {LAYER_LABEL[k]}
+                </label>
+              ))}
+            </div>
+            <label className="chip follow" title="Keep the mount's position in the centre of the map">
               <input type="checkbox" checked={follow} onChange={() => setFollow(!follow)} /> Follow mount
             </label>
           </div>
@@ -208,8 +218,8 @@ function Main() {
         <section className="col hand-col">{tab === "hand" && <HandController />}</section>
       </main>
       <Telemetry />
-      {guide && !welcome && <SetupGuide onClose={() => setGuide(false)} onOpenSettings={() => setSettings(true)} />}
-      {settings && <SettingsPanel onClose={() => setSettings(false)} />}
+      {guide && !welcome && <SetupGuide onClose={() => setGuide(false)} onOpenSettings={() => openSettings("location")} />}
+      <SettingsPanel open={settings.open} tab={settings.tab} onClose={closeSettings} />
       {account && <AccountDialog tab={account} onClose={() => setAccount(null)} />}
       {welcome && (
         <WelcomeScreen

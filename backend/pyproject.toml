@@ -30,6 +30,7 @@ solve = ["cedar-solve>=0.5"]
 [project.scripts]
 openskymount = "openskymount.server.__main__:main"
 openskymount-fake-firmware = "openskymount.mount.fake_firmware:main"
+openskymount-fake-onstep = "openskymount.mount.fake_onstep:main"
 
 [build-system]
 requires = ["setuptools>=68"]

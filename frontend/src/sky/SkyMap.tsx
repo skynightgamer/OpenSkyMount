@@ -26,10 +26,12 @@ import {
   flightAt,
   landscapeAlt,
   makeFlight,
+  reticleAt,
   ridgeAlt,
   sceneryColors,
   separation,
   shortestDelta,
+  slerp,
   twinkle,
   wrap360,
   type Flight,
@@ -811,10 +813,17 @@ function render(
     ctx.lineDashOffset = 0;
   }
   if (fr && st.selectedId) {
-    if (selAnim.id !== st.selectedId) selAnim = { id: st.selectedId, t0: tMs };
+    if (selAnim.id !== st.selectedId) {
+      // Glide over from the previous selection if its reticle was on screen a moment ago; otherwise settle in.
+      const prev = lastReticle && tMs - lastReticle.t < 250 ? lastReticle : null;
+      selAnim = { id: st.selectedId, t0: tMs, from: prev?.v ?? null, fromR: prev?.r ?? null };
+    }
     const sel = markerVec(st.selectedId, fr, cat, now);
-    if (sel) drawSelection(ctx, b, sel, selectionLabel(st.selectedId, cat, fr.f), tMs - selAnim.t0, w);
-  } else selAnim = { id: null, t0: 0 };
+    if (sel) {
+      const R = reticleRadius(st.selectedId, cat, b);
+      lastReticle = drawSelection(ctx, b, sel, selAnim, R, selectionLabel(st.selectedId, cat, fr.f), tMs, w);
+    }
+  } else selAnim = { id: null, t0: 0, from: null, fromR: null };
   if (mount && targetVec) drawTargetMark(ctx, b, targetVec, tMs, mount.mode);
   if (mount && mountVec) {
     const p = project(b, mountVec, 0);
@@ -863,7 +872,9 @@ function render(
 }
 
 // ------------------------------------------------------------------ markers
-let selAnim: { id: string | null; t0: number } = { id: null, t0: 0 };
+let selAnim: { id: string | null; t0: number; from: Vec3 | null; fromR: number | null } = { id: null, t0: 0, from: null, fromR: null };
+/** Where the reticle was last drawn (direction, radius, time), so the next selection can glide from there. */
+let lastReticle: { v: Vec3; r: number; t: number } | null = null;
 
 /** Rounded label with a background, anchored at its bottom-left corner. */
 function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, fg: string, bg: string, border: string) {
@@ -881,41 +892,76 @@ function pill(ctx: CanvasRenderingContext2D, text: string, x: number, y: number,
   ctx.fillText(text, x + 9, y - 6.5);
 }
 
-function easeOutCubic(t: number): number {
-  return 1 - (1 - t) ** 3;
+/** Reticle size for an object: bigger for bright stars and the Sun/Moon discs. */
+function reticleRadius(id: string, cat: Prepared | null, b: Basis): number {
+  if (id === "sun" || id === "moon") return Math.max(14, (0.26 * b.scale * Math.PI) / 180 * 2 + 7);
+  if (id.startsWith("hip:")) {
+    const s = findStar(cat, Number(id.slice(4)));
+    const mag = s ? s[3] : 6;
+    return 9.5 + Math.max(0, Math.min(3.5, 2.5 - mag)) * 1.6;
+  }
+  if (id.startsWith("planet:") || id.startsWith("dso:")) return 12.5;
+  return 10;
 }
 
-/** Corner brackets that close in on the selection, with a name tag. */
-function drawSelection(ctx: CanvasRenderingContext2D, b: Basis, v: Vec3, label: string | null, ageMs: number, w: number) {
+/**
+ * Selection reticle: a ring of four arcs that settles onto the object with one soft ripple, or glides over from the
+ * previous selection; the name tag fades in above it. Returns where it was drawn.
+ */
+function drawSelection(
+  ctx: CanvasRenderingContext2D,
+  b: Basis,
+  target: Vec3,
+  anim: { t0: number; from: Vec3 | null; fromR: number | null },
+  R: number,
+  label: string | null,
+  tMs: number,
+  w: number,
+): { v: Vec3; r: number; t: number } | null {
+  const pose = reticleAt(tMs - anim.t0, R, anim.from ? anim.fromR : null, REDUCED_MOTION);
+  const v = anim.from && pose.glide < 1 ? slerp(anim.from, target, pose.glide) : target;
   const p = project(b, v, 0);
-  if (!p) return;
-  const e = REDUCED_MOTION ? 1 : easeOutCubic(Math.min(1, ageMs / 420));
-  const R = 12 + 16 * (1 - e);
-  const L = 5.5;
+  if (!p) return null;
+  const [x, y] = p;
+  const r = pose.radius;
   ctx.save();
-  ctx.translate(p[0], p[1]);
-  ctx.rotate((1 - e) * (Math.PI / 2));
-  ctx.strokeStyle = "#7cf0ff";
-  ctx.globalAlpha = 0.35 + 0.65 * e;
-  ctx.lineWidth = 1.7;
   ctx.lineCap = "round";
-  ctx.beginPath();
-  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    ctx.moveTo(sx * R, sy * (R - L));
-    ctx.lineTo(sx * R, sy * R);
-    ctx.lineTo(sx * (R - L), sy * R);
+  if (pose.ripple > 0) {
+    ctx.strokeStyle = `rgba(170,210,255,${pose.rippleAlpha.toFixed(3)})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(x, y, pose.ripple, 0, Math.PI * 2);
+    ctx.stroke();
   }
-  ctx.stroke();
+  // Four arcs with gaps on the diagonals; a dark under-stroke keeps them readable on a bright (day) sky.
+  const gap = 0.32;
+  const arcs = () => {
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const c = (i * Math.PI) / 2;
+      ctx.moveTo(x + r * Math.cos(c - Math.PI / 4 + gap / 2), y + r * Math.sin(c - Math.PI / 4 + gap / 2));
+      ctx.arc(x, y, r, c - Math.PI / 4 + gap / 2, c + Math.PI / 4 - gap / 2);
+    }
+    ctx.stroke();
+  };
+  ctx.globalAlpha = pose.alpha;
+  ctx.strokeStyle = "rgba(4,8,16,0.35)";
+  ctx.lineWidth = 3.4;
+  arcs();
+  ctx.strokeStyle = "#c4e0ff";
+  ctx.lineWidth = 1.5;
+  arcs();
   ctx.restore();
-  if (label && e > 0.5) {
-    ctx.globalAlpha = Math.min(1, (e - 0.5) * 2);
+  if (label && pose.label > 0.01) {
+    ctx.globalAlpha = pose.label;
     ctx.font = "11.5px system-ui, sans-serif";
-    // Centred above the brackets, clear of the object's own label (drawn to its right).
+    // Centred above the ring, clear of the object's own label (drawn to its right); rises into place as it fades in.
     const tw = ctx.measureText(label).width + 18;
-    const x = Math.max(4, Math.min(w - tw - 4, p[0] - tw / 2));
-    pill(ctx, label, x, p[1] - R - 7, "#dff9ff", "rgba(6,22,30,0.78)", "rgba(124,240,255,0.4)");
+    const lx = Math.max(4, Math.min(w - tw - 4, x - tw / 2));
+    pill(ctx, label, lx, y - r - 7 + (1 - pose.label) * 4, "#eaf3ff", "rgba(10,18,32,0.8)", "rgba(170,210,255,0.32)");
     ctx.globalAlpha = 1;
   }
+  return { v, r, t: tMs };
 }
 
 /** The mount's target: dashes that run while slewing and a steady ring with ticks once tracking. */

@@ -7,6 +7,9 @@ import {
   landscapeAlt,
   makeFlight,
   mixHex,
+  RETICLE,
+  reticleAt,
+  slerp,
   ridgeAlt,
   separation,
   shortestDelta,
@@ -103,5 +106,46 @@ describe("labels and colours", () => {
   it("mixes colours", () => {
     expect(mixHex("#000000", "#ffffff", 0.5)).toBe("#808080");
     expect(mixHex("#102030", "#102030", 0.3)).toBe("#102030");
+  });
+});
+
+describe("selection reticle", () => {
+  it("slerp stays on the unit sphere and hits both ends", () => {
+    const a: [number, number, number] = [1, 0, 0];
+    const b: [number, number, number] = [0, 0.6, 0.8];
+    expect(slerp(a, b, 0)).toEqual(a);
+    const end = slerp(a, b, 1);
+    for (let i = 0; i < 3; i++) expect(end[i]).toBeCloseTo(b[i], 12);
+    for (const t of [0.1, 0.5, 0.9]) {
+      const v = slerp(a, b, t);
+      expect(Math.hypot(...v)).toBeCloseTo(1, 12);
+      // Constant angular speed: the angle from a grows linearly with t.
+      expect(Math.acos(v[0])).toBeCloseTo(t * Math.PI / 2, 9);
+    }
+  });
+
+  it("a fresh selection settles in from a wider, transparent ring and ripples once", () => {
+    const start = reticleAt(0, 12, null);
+    expect(start.alpha).toBe(0);
+    expect(start.radius).toBeGreaterThan(20);
+    expect(start.label).toBe(0);
+    const mid = reticleAt(RETICLE.rippleDelayMs + RETICLE.rippleMs / 2, 12, null);
+    expect(mid.ripple).toBeGreaterThan(12);
+    expect(mid.rippleAlpha).toBeGreaterThan(0);
+    const end = reticleAt(5000, 12, null);
+    expect(end).toEqual({ radius: 12, alpha: 1, glide: 1, ripple: 0, rippleAlpha: 0, label: 1 });
+  });
+
+  it("switching selections glides and resizes without a ripple", () => {
+    const half = reticleAt(RETICLE.glideMs / 2, 16, 10);
+    expect(half.alpha).toBe(1);
+    expect(half.glide).toBeCloseTo(0.5, 6);
+    expect(half.radius).toBeCloseTo(13, 6);
+    expect(half.ripple).toBe(0);
+    expect(reticleAt(RETICLE.glideMs, 16, 10).radius).toBe(16);
+  });
+
+  it("reduced motion shows the final pose at once", () => {
+    expect(reticleAt(0, 12, 30, true)).toEqual({ radius: 12, alpha: 1, glide: 1, ripple: 0, rippleAlpha: 0, label: 1 });
   });
 });

@@ -11,6 +11,10 @@ development environment). Reports from real clients are welcome.
 
 ## Connecting
 
+The web UI shows these details for the running server under **Settings → Connections** (address, port, device URL
+with copy buttons, discovery state, login, connected Alpaca clients), served by `GET /api/alpaca`. When the server
+listens only on this computer it says so, because other computers cannot connect then.
+
 | Setting | Value |
 |---|---|
 | Address | the OpenSkyMount server, e.g. `127.0.0.1`, or the computer's LAN address when started with `--host 0.0.0.0` |
