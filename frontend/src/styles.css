@@ -120,7 +120,10 @@ input[type="number"], input[type="datetime-local"] { font-variant-numeric: tabul
 .row.wrap > button { flex: 0 0 auto; }
 
 /* ---- search ---- */
-.search { position: relative; }
+/* The hits and "Best tonight" popovers are anchored to the whole sky column (not this thin panel), so they can be
+   sized to the space the column really has. */
+.search { position: static; }
+.sky-col { position: relative; }
 .search input[type="search"] {
   min-height: 34px; padding-left: 32px; border-radius: 8px; background-repeat: no-repeat; background-position: 10px 50%; background-size: 15px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e99a8' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='M15.5 15.5 20 20'/%3E%3C/svg%3E");
@@ -473,16 +476,28 @@ input.switch:disabled { opacity: 0.45; cursor: default; }
   .telemetry { margin: 0; border: 0; border-top: 1px solid var(--line-strong); border-radius: 0; max-height: 30vh; overflow-y: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tel.radec { grid-column: span 2; }
 }
+@media (max-width: 520px) {
+  .tonight-toggle span { display: none; }
+  .tonight-toggle { padding: 0 9px; }
+}
 
 /* ---- tonight planner (search panel, empty query) ---- */
-.tonight { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.search-row { display: flex; align-items: center; gap: 8px; }
+.search-row input[type="search"] { flex: 1; min-width: 0; }
+.tonight-toggle { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-height: 34px; padding: 0 10px; white-space: nowrap; }
+/* Floats over the sky map (like the search hits), so it costs no map height while closed or open. */
+.tonight-pop {
+  position: absolute; z-index: 10; left: 14px; right: 14px; top: 50px; max-height: min(calc(100% - 62px), 420px); padding: 10px 12px;
+  display: flex; flex-direction: column; background: var(--bg-raised); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.55);
+}
+.tonight { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; }
 .tonight-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .tonight-head .label { margin: 0; }
 .tonight-window { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .tonight-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .tonight-filters label { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .tonight-filters select { width: auto; min-height: 28px; padding: 0 4px; }
-.tonight-list { list-style: none; margin: 0; padding: 0; max-height: 34vh; overflow-y: auto; }
+.tonight-list { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .tonight-list li + li { border-top: 1px solid var(--line); }
 .tonight-list button {
   width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px;
@@ -492,8 +507,6 @@ input.switch:disabled { opacity: 0.45; cursor: default; }
 .tn-name { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .tn-meta { font-size: 12px; color: var(--muted); grid-column: 1; }
 .tn-when { font-size: 12px; color: var(--muted); grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-variant-numeric: tabular-nums; }
-.tonight-more { align-self: flex-start; min-height: 22px; padding: 0; background: none; border: 0; box-shadow: none; color: var(--accent); }
-.tonight-more:hover:not(:disabled) { background: none; text-decoration: underline; }
 .tonight-empty { margin: 0; color: var(--muted); }
 
 /* ---- exposure planner (target panel) ---- */

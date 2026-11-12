@@ -43,14 +43,13 @@ const KINDS: [string, string][] = [
   ["star", "Bright stars"],
 ];
 
-export function TonightList() {
+export function TonightList({ onPick }: { onPick?: () => void }) {
   const site = useStore((s) => s.config?.config.observer);
   const epoch = useStore((s) => s.clock?.epoch);
   const tz = useStore((s) => s.prefs.timeZone);
   const clock = (unix: number) => formatTime(unix, tz);
   const [kind, setKind] = useState("all");
   const [minAlt, setMinAlt] = useState(30);
-  const [expanded, setExpanded] = useState(false);
   const [data, setData] = useState<Tonight | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -75,7 +74,6 @@ export function TonightList() {
   }, [kind, minAlt, epoch, site?.latitude, site?.longitude]);
 
   const rows = data?.targets ?? [];
-  const shown = expanded ? rows : rows.slice(0, 3);
   return (
     <div className="tonight">
       <div className="tonight-head">
@@ -112,11 +110,16 @@ export function TonightList() {
       </div>
       {data && !data.window && <p className="tonight-empty">{data.message}</p>}
       {data?.window && rows.length === 0 && <p className="tonight-empty">Nothing of this type climbs above {minAlt}° tonight.</p>}
-      {shown.length > 0 && (
+      {rows.length > 0 && (
         <ol className="tonight-list">
-          {shown.map((t) => (
+          {rows.map((t) => (
             <li key={t.id}>
-              <button onClick={() => select(t.id, true)} title={`Above ${minAlt}° from ${clock(t.above_from)} to ${clock(t.above_until)}`}>
+              <button
+                onClick={() => {
+                  select(t.id, true);
+                  onPick?.();
+                }}
+                title={`Above ${minAlt}° from ${clock(t.above_from)} to ${clock(t.above_until)}`}>
                 <span className="tn-name">{t.name}</span>
                 <span className="tn-meta">
                   {t.type}
@@ -129,11 +132,6 @@ export function TonightList() {
             </li>
           ))}
         </ol>
-      )}
-      {rows.length > 3 && (
-        <button className="tonight-more" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Show top 3" : `Show all ${rows.length}`}
-        </button>
       )}
     </div>
   );

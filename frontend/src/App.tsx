@@ -38,6 +38,7 @@ function initialTab(): Tab {
 }
 const LAYER_LABEL: Record<keyof Layers, string> = {
   constellations: "Constellations",
+  figures: "Figures",
   labels: "Labels",
   altaz: "Alt-az grid",
   equatorial: "Equatorial grid",
@@ -46,7 +47,7 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   ecliptic: "Ecliptic",
   landscape: "Landscape",
 };
-const DEFAULT_LAYERS: Layers = { constellations: true, labels: true, altaz: true, equatorial: false, dsos: true, milkyway: true, ecliptic: false, landscape: true };
+const DEFAULT_LAYERS: Layers = { constellations: true, figures: true, labels: true, altaz: true, equatorial: false, dsos: true, milkyway: true, ecliptic: false, landscape: true };
 
 function loadLayers(): Layers {
   try {

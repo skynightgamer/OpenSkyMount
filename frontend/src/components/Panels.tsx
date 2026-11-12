@@ -90,6 +90,24 @@ interface Hit {
 export function SearchPanel() {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
+  // "Best tonight" is a popover over the sky map, not a permanent block, so the map keeps the height.
+  const [tonight, setTonight] = useState(false);
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!tonight) return;
+    const away = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setTonight(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTonight(false);
+    };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [tonight]);
   useEffect(() => {
     if (!q.trim()) {
       setHits([]);
@@ -108,20 +126,38 @@ export function SearchPanel() {
     };
   }, [q]);
   return (
-    <section className="panel search">
-      <input
-        type="search"
-        placeholder="Search: Jupiter, Vega, M31, alpha Lyrae"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && hits[0]) {
-            select(hits[0].id, true);
+    <section className="panel search" ref={root}>
+      <div className="search-row">
+        <input
+          type="search"
+          placeholder="Search: Jupiter, Vega, M31, alpha Lyrae"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setTonight(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && hits[0]) {
+              select(hits[0].id, true);
+              setQ("");
+            }
+          }}
+          aria-label="Search sky objects"
+        />
+        <button
+          className={`tonight-toggle${tonight ? " sel" : ""}`}
+          onClick={() => {
             setQ("");
-          }
-        }}
-        aria-label="Search sky objects"
-      />
+            setTonight(!tonight);
+          }}
+          aria-expanded={tonight}
+          aria-controls="tonight-pop"
+          title="Best targets for tonight's dark hours"
+        >
+          <Icon name="sparkle" />
+          <span>Best tonight</span>
+        </button>
+      </div>
       {hits.length > 0 && (
         <ul className="hits" role="listbox">
           {hits.map((h) => (
@@ -143,7 +179,11 @@ export function SearchPanel() {
           ))}
         </ul>
       )}
-      {!q && <TonightList />}
+      {!q && tonight && (
+        <div id="tonight-pop" className="tonight-pop">
+          <TonightList onPick={() => setTonight(false)} />
+        </div>
+      )}
     </section>
   );
 }

@@ -37,6 +37,8 @@ import {
   type Flight,
   type ViewPose,
 } from "./scenery";
+import { buildFigureMesh, FIGURE_INFO, type FigureMesh } from "./figures";
+import { drawFigureLayer } from "./figurerender";
 import { Icon } from "../components/Icon";
 
 /** Users who ask for less motion get instant camera moves and no twinkling or pulsing markers. */
@@ -73,6 +75,8 @@ interface Prepared {
   stars: Catalog["stars"];
   lines: { con: string; vecs: Vec3[][]; label: Vec3; name: string }[];
   dsos: (Catalog["dsos"][number] & { v: Vec3 })[];
+  /** Constellation artwork pinned to the sky (see figures.ts). */
+  figures: FigureMesh[];
 }
 
 interface StarTier {
@@ -111,7 +115,13 @@ export function loadCatalog(): Promise<Prepared> {
       .then((c: Catalog) => {
         const starVec = new Float64Array(c.stars.length * 3);
         c.stars.forEach((s, i) => starVec.set(radecToVec(s[1], s[2]), i * 3));
+        const figures: FigureMesh[] = [];
+        for (const id of Object.keys(FIGURE_INFO)) {
+          const f = buildFigureMesh(id);
+          if (f) figures.push(f);
+        }
         return {
+          figures,
           starVec,
           stars: c.stars,
           lines: c.constellations.map((k) => ({
@@ -133,6 +143,7 @@ export function loadCatalog(): Promise<Prepared> {
 
 export interface Layers {
   constellations: boolean;
+  figures: boolean;
   labels: boolean;
   altaz: boolean;
   equatorial: boolean;
@@ -612,6 +623,11 @@ function render(
           }
         }
       }
+    }
+
+    if (layers.figures && cat.figures.length) {
+      // Painted constellation art, behind the stick figures and stars.
+      drawFigureLayer({ ctx, b, m, figs: cat.figures, w, h, dpr: ctx.getTransform().a, fov: view.fov, sunAlt, maxJump, tMs, reducedMotion: REDUCED_MOTION });
     }
 
     if (layers.constellations) {

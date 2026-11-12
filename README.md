@@ -29,7 +29,8 @@ mount**, so behaviour on real hardware is *not verified*. See [docs/PROGRESS.md]
 
 ## What works today (verified by automated tests)
 
-- **Sky map**: 41,411 stars to magnitude 8 (the faint ones load when you zoom in), constellation lines, Messier objects, Sun, Moon and
+- **Sky map**: 41,411 stars to magnitude 8 (the faint ones load when you zoom in), constellation lines, **painted constellation figures** (the mythological characters and creatures, switchable;
+  artwork from Stellarium, Free Art License, see `frontend/public/figures/NOTICE.md`), Messier objects, Sun, Moon and
   planets, alt-az and equatorial grids, horizon, zoom and pan by mouse or touch, search (e.g. "Jupiter", "Vega",
   "alpha Lyr", "M31"), and object details: RA/Dec, Alt/Az, rise, transit and set times, rates, and field rotation.
 - **Accurate astronomy**: Skyfield and the JPL DE421 ephemeris, fully offline. Results are checked against worked

@@ -9,11 +9,14 @@
 | Skyfield, jplephem, sgp4 | Astronomy computations | MIT |
 | FastAPI, Starlette, Uvicorn, Pydantic | Web server | MIT / BSD-3-Clause |
 | NumPy | Numerics | BSD-3-Clause |
+| Stellarium constellation illustrations (modern sky culture) and their anchor stars | The "Figures" layer of the sky map → `frontend/public/figures/*.png` and `frontend/src/sky/figures.json` (fetched by `scripts/build_figures.py`) | Pictures: Free Art License (copyleft, attribution kept in `frontend/public/figures/NOTICE.md`); anchor data: CC BY-SA 4.0 |
 | React, React-DOM | UI | MIT |
 | three.js | 3D view | MIT |
 | Vite, TypeScript, Vitest | Build/test tooling (not shipped) | MIT / Apache-2.0 |
 | cedar-solve (fork of ESA tetra3) — *optional, not bundled* | Plate-solving proof of concept | Apache-2.0 (tetra3 derivative of MIT-licensed Tetra) |
 | Astropy — *optional, tests only* | Independent cross-check | BSD-3-Clause |
 
-All licenses are compatible with distributing OpenSkyMount under MIT. No code was copied from
-GPL-licensed projects (Stellarium, OnStepX, INDI, astrometry.net were evaluated but not incorporated).
+The source code is MIT. The constellation pictures are a separate, copyleft-licensed asset (Free Art License): they
+are shipped as their own files with their notice, and removing them does not affect the program. No code was copied
+from GPL-licensed projects (Stellarium, OnStepX, INDI, astrometry.net were evaluated; only Stellarium's constellation
+pictures and their anchor data are used, see above).

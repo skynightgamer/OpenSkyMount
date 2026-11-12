@@ -25,7 +25,8 @@ behaviour is verified.
   admin/operator/observer roles). Account handlers are `async` (they wake WebSocket queues); scrypt runs in the thread pool.
 - `solve/` — optional, experimental plate solving (cedar-solve).
 - Frontend: `src/store.ts` (WS client/state), `src/sky/` (canvas sky map, projection math with unit tests; `scenery.ts`
-  = ecliptic, decorative skyline, twinkle, camera flights), `src/mount/MountView.tsx` (three.js), `src/components/Panels.tsx`,
+  = ecliptic, decorative skyline, twinkle, camera flights; `figures.ts` + `figurerender.ts` = Stellarium constellation art pinned
+  to the sky by 3 anchor stars, drawn as a warped mesh; data from `scripts/build_figures.py`), `src/mount/MountView.tsx` (three.js), `src/components/Panels.tsx`,
   `Account.tsx` (login, account menu/dialog), `Welcome.tsx`, `Guide.tsx` (simulator setup guide).
 - Playwright is not a project dependency (CI installs it). Locally: `NODE_PATH=<node_modules with a Playwright whose Chromium is installed> scripts/e2e.sh` (session 10 used 1.48 / chromium-1140).
 

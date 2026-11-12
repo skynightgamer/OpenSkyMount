@@ -35,10 +35,22 @@ async function waitText(page, selector, re, timeout = 30000) {
     p.on("pageerror", (e) => errors.push(e.message));
     p.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   }
+  let figureRequests = 0;
+  a.on("request", (r) => /\/figures\/[A-Za-z]+\.png/.test(r.url()) && figureRequests++);
   await a.goto(base);
   await b.goto(base);
   await waitText(a, ".conn", /Simulator connected/);
   await waitText(b, ".conn", /Simulator connected/);
+
+  // Constellation figures: the pictures are served as static files and the "Figures" layer is on by default,
+  // switchable, and remembered per device.
+  const pic = await a.request.get(base + "/figures/Ori.png");
+  if (!pic.ok() || !(pic.headers()["content-type"] || "").includes("image/png")) throw new Error("figure picture not served");
+  const figuresChip = a.getByRole("checkbox", { name: "Figures" });
+  if (!(await figuresChip.isChecked())) throw new Error("Figures layer should be on by default");
+  await figuresChip.uncheck();
+  if ((await a.evaluate(() => JSON.parse(localStorage.getItem("osm-layers") || "{}").figures)) !== false) throw new Error("Figures choice not remembered");
+  await figuresChip.check();
 
   // Window A takes control and moves the simulated clock to a night when Jupiter is up.
   await a.getByRole("button", { name: "Take control" }).click();
@@ -48,9 +60,17 @@ async function waitText(page, selector, re, timeout = 30000) {
   await a.getByRole("button", { name: "×10" }).click();
   await waitText(a, ".clock-read", /simulated ×10/);
 
-  // Tonight's planner is shown while the search box is empty.
-  await a.waitForSelector(".tonight-list li", { timeout: 20000 });
+  // Tonight's planner is a popover over the sky map, closed by default.
+  if (await a.locator(".tonight-pop").count()) throw new Error("Best tonight should start closed");
+  await a.locator(".tonight-toggle").click();
+  await a.waitForSelector(".tonight-pop .tonight-list li", { timeout: 20000 });
+  // It is night in the simulation, so the sky map has fetched constellation pictures.
+  await a.waitForTimeout(500);
+  if (!figureRequests) throw new Error("no constellation pictures were requested at night");
+  console.log("Figure pictures requested:", figureRequests);
   console.log("Tonight top:", (await a.locator(".tonight-list li").first().innerText()).replace(/\s+/g, " "));
+  await a.keyboard.press("Escape");
+  if (await a.locator(".tonight-pop").count()) throw new Error("Escape should close Best tonight");
 
   // Search, select and GoTo Jupiter.
   await a.fill('input[type="search"]', "Jupiter");

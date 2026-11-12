@@ -1,6 +1,8 @@
 # Progress
 
-_Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–11 merged; session 11 merged from `feat/session-11-polish-onstep`).
+Review on 2026-11-12: credited artwork creator Johan Meuris in the figure notice; the full test script and frontend build passed.
+
+_Last updated: 2026-11-12 (session 12)._ Main branch: `main` (sessions 6–11 merged). Session 12 is on `feat/session-12-constellation-art` (not merged).
 
 ## Milestones
 
@@ -16,6 +18,7 @@ _Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–11 me
 | Observing sessions, satellites/comets, telemetry replay, gamepad, phone layout | **Done, verified (sim)** | Target queue; TLE/MPC elements (user-supplied); fast satellite tracking; JSONL recordings + replay; Gamepad API; hand-controller layout + PWA. See docs/observing.md |
 | Welcome screen, simulator setup guide | **Done, verified (sim, browser E2E)** | First-run welcome, 7-step docked guide with live completion checks. See D46 |
 | Accounts (log in/out, roles, account management) | **Done, verified (tests + browser E2E)** | Admin/operator/observer, first-admin setup from the server computer, profile, password change, logins list, user admin, CLI. See D47 |
+| Constellation figures (mythological art) | **Done, verified (unit tests, browser E2E, by eye in the in-app browser)** | 85 Stellarium pictures pinned to their stars, "Figures" layer. See D50 |
 | OnStepX / LX200 adapter | **Experimental; verified against a fake endpoint only** | `onstep://host:9999`; firmware GoTo for long moves, rate loop for tracking, direction and wrong-way-round checks. Real OnStepX: blocked by hardware. See D48 |
 | CI | **Done** | GitHub Actions: backend (3.11, 3.13 + extras), frontend, browser E2E |
 
@@ -185,3 +188,28 @@ _Last updated: 2026-11-12 (session 11)._ Main branch: `main` (sessions 6–11 me
   149 backend tests (8 skipped, optional extras not installed), 46 frontend unit tests and all four browser E2E
   scripts pass; README screenshots regenerated. **Not verified**: real OnStepX firmware (no hardware), the settings
   sheet with a screen reader.
+- **Session 12 (2026-11-12)**: user request: show the mythological figures/creatures over the constellations, like
+  planetarium programs do (branch `feat/session-12-constellation-art`, D50). I first drew my own line art from basic
+  shapes anchored to stars; the user rejected it ("looks really bad") and asked for premade art. Switched to the
+  **Stellarium modern sky culture illustrations** (Free Art License; user approved the download and the licence).
+  (1) `scripts/build_figures.py` fetches the 85 pictures and anchor stars from a pinned commit into
+  `frontend/public/figures/` and `frontend/src/sky/figures.json` (anchor RA/Dec baked in). (2) `sky/figures.ts`: the
+  picture-to-sky fit from three anchors and the mesh; `sky/figurerender.ts`: textured-triangle mesh warp onto the
+  stereographic view, additive blend, tint, lazy picture loading, eased focus brightening. (3) New "Figures" layer chip
+  (default on, remembered per device); hidden by day, fades in through twilight. (4) `frontend/public/figures/NOTICE.md`
+  and a THIRD_PARTY_NOTICES row for the licence. Found while testing: the PNGs are fully opaque grey-on-black (made for
+  additive drawing), so normal alpha drawing produced dark patches over the sky.
+  57 frontend unit tests (+11: anchors land exactly on their stars, every picture sits over its own constellation and
+  none is mirrored, focus, triangle transform, daylight fade), 149 backend tests (8 skipped), all four browser E2E
+  scripts (smoke now checks the picture is served, the chip default and persistence, and that pictures load at night).
+  Cost about 0.5 ms per frame in the in-app browser (120 → 113 fps). **Not verified**: frame rate on a real phone, the
+  look in red-light mode, screen readers (the art is decorative).
+- **Session 12, later (2026-11-12)**: user asked to stop "Best tonight" taking so much room above the sky map (D51).
+  It was a permanent block in the search panel (header, filters, three rows). It is now a **Best tonight** button next
+  to the search box that opens a popover floating over the map (closes on pick, Escape, outside click or typing in
+  the search). The map gets the full height back; the list shows every target (scrolls) instead of "top 3". The
+  planner is only fetched while the popover is open. Browser E2E script updated (starts closed, opens, lists, Escape
+  closes). Checked with `tsc` and by hand in the in-app browser (desktop-width and 375 px phone: opens, lists, picking a
+  target selects it, flies there and closes, Escape and outside click close it, search hits still positioned). The
+  popover is anchored to the whole sky column and capped to its height so the list scrolls instead of being clipped.
+  **Unit tests and the scripted browser E2E were not run** at the user's request.
