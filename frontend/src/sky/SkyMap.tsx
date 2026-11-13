@@ -32,7 +32,6 @@ import {
   separation,
   shortestDelta,
   slerp,
-  twinkle,
   wrap360,
   type Flight,
   type ViewPose,
@@ -42,7 +41,7 @@ import { drawFigureLayer } from "./figurerender";
 import { wheelZoomFactor } from "./zoom";
 import { Icon } from "../components/Icon";
 
-/** Users who ask for less motion get instant camera moves and no twinkling or pulsing markers. */
+/** Users who ask for less motion get instant camera moves and no pulsing markers. */
 const REDUCED_MOTION = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 interface Catalog {
@@ -697,15 +696,9 @@ function render(
         const alt = Math.asin(Math.max(-1, Math.min(1, v[2]))) / DEG;
         const mag = s[3] + extinction(alt);
         if (mag > limitMag + 0.3 && s[3] > 2) continue;
-        let r = Math.max(0.55, (6.9 - mag) * 0.38 + zoomBoost);
+        const r = Math.max(0.55, (6.9 - mag) * 0.38 + zoomBoost);
         const below = v[2] < 0 ? 0.35 : 1;
-        let faint = mag > 6.5 ? 0.55 + (0.3 * (8 - mag)) / 1.5 : mag > 5 ? 0.75 + 0.25 * (6.5 - mag) / 1.5 : 1;
-        if (!day && !REDUCED_MOTION && s[3] < 3.2 && v[2] > 0) {
-          // Scintillation of the brighter stars, stronger near the horizon.
-          const tw = twinkle(s[0], tSec, alt);
-          faint *= Math.min(1, tw);
-          r *= 0.93 + 0.07 * tw;
-        }
+        const faint = mag > 6.5 ? 0.55 + (0.3 * (8 - mag)) / 1.5 : mag > 5 ? 0.75 + 0.25 * (6.5 - mag) / 1.5 : 1;
         const color = bvColor(s[4]);
         ctx.globalAlpha = Math.max(0.15, below * faint);
         if (r > 1.25 && !day) {

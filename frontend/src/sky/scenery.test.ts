@@ -13,7 +13,6 @@ import {
   ridgeAlt,
   separation,
   shortestDelta,
-  twinkle,
 } from "./scenery";
 
 describe("ecliptic", () => {
@@ -53,23 +52,6 @@ describe("decorative skyline", () => {
     const max = Math.max(...heights);
     const min = Math.min(...heights);
     expect(max - min).toBeGreaterThan(0.6);
-  });
-});
-
-describe("twinkle", () => {
-  it("varies more near the horizon than overhead", () => {
-    const spread = (alt: number) => {
-      let lo = Infinity;
-      let hi = -Infinity;
-      for (let t = 0; t < 10; t += 0.01) {
-        const v = twinkle(42, t, alt);
-        lo = Math.min(lo, v);
-        hi = Math.max(hi, v);
-      }
-      return hi - lo;
-    };
-    expect(spread(5)).toBeGreaterThan(2 * spread(80));
-    expect(spread(80)).toBeLessThan(0.15);
   });
 });
 

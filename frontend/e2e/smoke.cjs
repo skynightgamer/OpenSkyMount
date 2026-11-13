@@ -59,8 +59,47 @@ async function checkIdleMountMarker(browser) {
   }
 }
 
+async function checkSteadyStars(browser) {
+  const ctx = await newCtx(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
+  try {
+    await ctx.addInitScript(() => {
+      localStorage.setItem("osm-layers", JSON.stringify({ figures: false }));
+      const drawImage = CanvasRenderingContext2D.prototype.drawImage;
+      window.starSamples = [];
+      CanvasRenderingContext2D.prototype.drawImage = function (image, ...args) {
+        if (this.canvas.matches(".sky-canvas") && this.globalCompositeOperation === "lighter" && image.width === 64) {
+          window.starSamples.push([this.globalAlpha, args[2]]);
+        }
+        return drawImage.call(this, image, ...args);
+      };
+    });
+    const page = await ctx.newPage();
+    // One bright, low star in the initial view, with a fixed altitude and no other glow sprites.
+    await page.route("**/api/catalog", (route) => route.fulfill({
+      json: { stars: [[42, 180, 10, 0.9, 0, ""]], constellations: [], dsos: [] },
+    }));
+    await page.route("**/api/sky?*", (route) => route.fulfill({
+      json: {
+        time: Number(new URL(route.request().url()).searchParams.get("t")),
+        matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        bodies: [], sun_alt: -30, sky_state: "night", moon: { illuminated: 0 },
+      },
+    }));
+    await page.goto(base);
+    await page.waitForFunction(() => window.starSamples.length >= 60);
+    const stable = await page.evaluate(() => {
+      const [alpha, width] = window.starSamples[0];
+      return window.starSamples.every(([a, w]) => a === alpha && w === width);
+    });
+    if (!stable) throw new Error("star brightness or size changed at fixed altitude");
+  } finally {
+    await ctx.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
+  await checkSteadyStars(browser);
   await checkIdleMountMarker(browser);
   const errors = [];
   const ctxA = await newCtx(browser, { viewport: { width: 1440, height: 900 } });

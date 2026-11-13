@@ -29,3 +29,4 @@
 ## Completed follow-ups
 
 - Fixed the idle simulator's blinking mount crosshair and added a browser regression at maximum sky-map zoom-out.
+- Removed star blinking in the sky map and added a browser regression for steady brightness and size.

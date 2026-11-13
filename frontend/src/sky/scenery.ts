@@ -60,19 +60,6 @@ export function landscapeAlt(azDeg: number): number {
   return Math.max(0.1, 1.35 * (hills + tree));
 }
 
-// ------------------------------------------------------------------ twinkling
-/**
- * Brightness factor for scintillation (about 0.7..1.3). Stronger near the horizon, where starlight crosses more air.
- * `i` identifies the star, `t` is wall-clock seconds.
- */
-export function twinkle(i: number, t: number, alt: number): number {
-  const amp = 0.05 + 0.22 * (1 - smooth(4, 55, alt));
-  const ph = hash01(i) * 6.2832;
-  const f1 = 5 + 6 * hash01(i + 101);
-  const f2 = 9 + 8 * hash01(i + 202);
-  return 1 + amp * (0.62 * Math.sin(t * f1 + ph) + 0.38 * Math.sin(t * f2 + 2.3 * ph));
-}
-
 // ------------------------------------------------------------------ camera flights
 export interface ViewPose {
   az: number;
