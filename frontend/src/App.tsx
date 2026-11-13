@@ -14,6 +14,7 @@ import { SetupGuide, resetGuide } from "./components/Guide";
 import { Icon, Logo } from "./components/Icon";
 import { WelcomeScreen, markWelcomeSeen, welcomeDue } from "./components/Welcome";
 import { AlignmentPanel } from "./components/Planner";
+import { EventsPanel } from "./components/Events";
 import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
 import { useGamepad } from "./gamepad";
 import { usePresence } from "./presence";
@@ -134,15 +135,19 @@ function Main() {
       return false;
     }
   });
+  const nightLevel = useStore((s) => s.prefs.nightLevel);
   useEffect(() => {
     // Red-light mode preserves the observer's dark adaptation (applies to canvas and 3D too).
-    document.documentElement.classList.toggle("night", night);
+    const root = document.documentElement;
+    root.classList.toggle("night", night);
+    root.style.setProperty("--night-level", String(nightLevel));
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", night ? "#120000" : "#080b11");
     try {
       localStorage.setItem("osm-night", night ? "1" : "0");
     } catch {
       /* per-device preference only */
     }
-  }, [night]);
+  }, [night, nightLevel]);
 
   return (
     <div className={`app tab-${tab}`}>
@@ -193,7 +198,7 @@ function Main() {
           <div className="layers">
             <div className="layer-chips" role="group" aria-label="Sky map layers">
               {(Object.keys(layers) as (keyof Layers)[]).map((k) => (
-                <label key={k} className="chip">
+                <label key={k} className="chip" title={k === "figures" ? "Painted constellation art. Click a figure to select its constellation." : undefined}>
                   <input type="checkbox" checked={layers[k]} onChange={() => toggle(k)} /> {LAYER_LABEL[k]}
                 </label>
               ))}
@@ -212,6 +217,7 @@ function Main() {
           <TargetPanel />
           <MotionPanel />
           <SessionPanel />
+          <EventsPanel />
           <AlignmentPanel />
           <ClockPanel />
           <OrbitsPanel />

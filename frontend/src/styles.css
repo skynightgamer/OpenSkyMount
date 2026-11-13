@@ -36,7 +36,10 @@
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border: 3px solid transparent; border-radius: 999px; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 html, body, #root { height: 100%; margin: 0; background: var(--bg-app); color: var(--text); }
-html.night { filter: url(#night-red); }
+html.night { filter: url(#night-red) brightness(var(--night-level, 1)); }
+/* A single red hue cannot tell the stop button from the others by colour: invert it (pale fill, dark label). */
+html.night .estop { background: #ffd9d4 !important; color: #2a0300 !important; border-color: #fff !important; }
+html.night .estop:hover:not(:disabled) { background: #fff0ed !important; }
 
 button {
   font: inherit; color: var(--text); background: var(--control); border: 1px solid var(--line-strong);
@@ -257,6 +260,8 @@ input[type="number"], input[type="datetime-local"] { font-variant-numeric: tabul
 .grid2 dt, .grid2 dd { padding: 4px 0; border-top: 1px solid var(--line); }
 .grid2 dt { color: var(--muted); padding-right: 12px; }
 .grid2 dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.lore { margin: 8px 0; padding: 8px 10px; border-left: 2px solid var(--accent-line); background: var(--accent-bg); border-radius: 0 var(--radius) var(--radius) 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+.lore strong { color: #dcebfb; font-weight: 600; }
 .notes {
   margin: 0 0 10px; padding: 6px 10px 6px 24px; color: #e8c784; font-size: 12px; line-height: 1.45;
   background: rgb(226 177 85 / 0.07); border: 1px solid rgb(226 177 85 / 0.22); border-radius: 8px;
@@ -803,3 +808,22 @@ button.hand-big { min-height: 52px; font-size: 17px; border-radius: 10px; }
   .tab-hand .telemetry { display: none; }
   .app.tab-hand .layout { grid-row: 3 / span 2; background: var(--bg-app); }
 }
+
+/* ---- sky events calendar ---- */
+.ev-filters { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0 8px; color: var(--muted); }
+.ev-filters label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ev-filters input[type="checkbox"] { width: 14px; height: 14px; min-height: 0; padding: 0; margin: 0; }
+.ev-filters select { width: auto; min-height: 26px; padding: 0 4px; }
+.ev-list { list-style: none; margin: 0; padding: 0; max-height: 380px; overflow-y: auto; }
+.ev { display: flex; flex-direction: column; gap: 3px; padding: 9px 0; border-top: 1px solid var(--line); }
+.ev:first-child { border-top: 0; }
+.ev-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.ev-head .num { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+.ev-rel { color: var(--faint); margin-left: 4px; }
+.ev small { color: var(--muted); line-height: 1.45; }
+.ev .ev-warn { color: var(--warn, #e6b04a); }
+.ev-acts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
+.ev-acts button { min-height: 24px; padding: 0 8px; font-size: 12px; }
+.ev-seen strong { color: #dcebfb; }
+.ev .vis { color: var(--ok); }
+.ev .dim { color: var(--muted); }

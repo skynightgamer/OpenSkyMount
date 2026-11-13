@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FIGURE_SPACE as F, fixedAngle, fixedDMS, fixedNum } from "./format";
+import { clampNightLevel, FIGURE_SPACE as F, fixedAngle, fixedDMS, fixedNum, NIGHT_LEVEL_MIN } from "./format";
 
 describe("fixed-width readouts", () => {
   it("keeps a constant length for any value in range", () => {
@@ -32,8 +32,8 @@ describe("fixed-width readouts", () => {
 describe("display preferences", () => {
   it("formats angles in both modes with fixed width", async () => {
     const { angleFmt } = await import("./format");
-    const dms = angleFmt({ angles: "dms", timeZone: "UTC" });
-    const dec = angleFmt({ angles: "decimal", timeZone: "UTC" });
+    const dms = angleFmt({ angles: "dms", timeZone: "UTC", nightLevel: 1 });
+    const dec = angleFmt({ angles: "decimal", timeZone: "UTC", nightLevel: 1 });
     expect(dms.ra(279.23473479)).toBe("18h 36m 56.3s");
     expect(dms.ra(359.99999)).toBe("00h 00m 00.0s");
     expect(dec.ra(279.23473479)).toBe("279.2347°");
@@ -52,5 +52,19 @@ describe("display preferences", () => {
     expect(fromZonedInput("2026-07-01T12:00", "Europe/Berlin")).toBe(Date.UTC(2026, 6, 1, 10, 0) / 1000);
     expect(fromZonedInput("garbage", "UTC")).toBeNaN();
     expect(formatTime(t, "Asia/Tokyo")).toMatch(/10:00/);
+  });
+});
+
+describe("clampNightLevel", () => {
+  it("keeps valid levels and clamps the rest to the allowed range", () => {
+    expect(clampNightLevel(0.5)).toBe(0.5);
+    expect(clampNightLevel(1)).toBe(1);
+    expect(clampNightLevel(0)).toBe(NIGHT_LEVEL_MIN);
+    expect(clampNightLevel(-3)).toBe(NIGHT_LEVEL_MIN);
+    expect(clampNightLevel(7)).toBe(1);
+  });
+
+  it("falls back to full brightness for stored junk", () => {
+    for (const bad of [undefined, null, "0.3", NaN, Infinity, {}]) expect(clampNightLevel(bad)).toBe(1);
   });
 });

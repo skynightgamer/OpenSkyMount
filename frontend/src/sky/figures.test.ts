@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { angleDeg, buildFigureMesh, figureNightFactor, fitFigure, FIGURE_INFO, MESH, pixelToVec, skyToTangent, tangentToVec } from "./figures";
+import { angleDeg, buildFigureMesh, figureNightFactor, figureUnder, fitFigure, FIGURE_INFO, MESH, pixelToVec, skyToTangent, tangentToVec, vecToPixel, type LumaAt } from "./figures";
 import { focusedFigure, triangleTransform } from "./figurerender";
 import { radecToVec, separationDeg, vecToRadec } from "./projection";
 
@@ -123,5 +123,43 @@ describe("rendering helpers", () => {
     expect(figureNightFactor(-4)).toBe(0);
     expect(figureNightFactor(-9)).toBeCloseTo(0.5, 9);
     expect(figureNightFactor(-18)).toBe(1);
+  });
+});
+
+describe("clicking a figure", () => {
+  const ori = FIGURE_INFO.Ori;
+  const fit = fitFigure(ori)!;
+
+  it("maps a sky direction back to the picture pixel it came from", () => {
+    for (const [px, py] of [[0, 0], [ori.w / 2, ori.h / 2], [ori.w - 1, 10], [100, ori.h - 5]]) {
+      const back = vecToPixel(fit, pixelToVec(fit, px, py))!;
+      expect(back[0]).toBeCloseTo(px, 3);
+      expect(back[1]).toBeCloseTo(py, 3);
+    }
+  });
+
+  const figs = Object.keys(FIGURE_INFO).map((id) => buildFigureMesh(id)!);
+  const oriMesh = figs.find((f) => f.id === "Ori")!;
+
+  it("finds the figure under a painted point and none where there is only empty sky", () => {
+    const paint: LumaAt = () => 255;
+    const none: LumaAt = () => 0;
+    expect(figureUnder(figs, oriMesh.centre, paint)).toBe("Ori");
+    expect(figureUnder(figs, oriMesh.centre, none)).toBeNull();
+  });
+
+  it("reads the picture at the right pixel", () => {
+    const seen: [number, number][] = [];
+    figureUnder(figs, oriMesh.centre, (id, px, py) => (id === "Ori" ? (seen.push([px, py]), 255) : 0));
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0][0]).toBeGreaterThan(ori.w * 0.3);
+    expect(seen[0][0]).toBeLessThan(ori.w * 0.7);
+    expect(seen[0][1]).toBeGreaterThan(ori.h * 0.3);
+    expect(seen[0][1]).toBeLessThan(ori.h * 0.7);
+  });
+
+  it("ignores directions outside every picture", () => {
+    // The south celestial pole is far from Orion's picture.
+    expect(figureUnder([oriMesh], radecToVec(0, -89), () => 255)).toBeNull();
   });
 });

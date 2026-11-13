@@ -33,6 +33,45 @@ export function figureImage(id: string): HTMLImageElement | null {
   return null;
 }
 
+// ---------------------------------------------------------------- hit testing
+const LUMA_SIZE = 96;
+const lumaMaps = new Map<string, Uint8Array | null>();
+
+/** Brightest paint within 2 cells of a picture pixel (so thin strokes are easy to hit), 0 while loading. */
+export function figureLuma(id: string, px: number, py: number): number {
+  let map = lumaMaps.get(id);
+  if (map === undefined) {
+    const img = figureImage(id);
+    if (!img || typeof document === "undefined") return 0; // not loaded yet: try again on the next click
+    map = null;
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = LUMA_SIZE;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      if (g) {
+        g.drawImage(img, 0, 0, LUMA_SIZE, LUMA_SIZE);
+        const rgba = g.getImageData(0, 0, LUMA_SIZE, LUMA_SIZE).data;
+        map = new Uint8Array(LUMA_SIZE * LUMA_SIZE);
+        for (let i = 0; i < map.length; i++) map[i] = Math.max(rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2]);
+      }
+    } catch {
+      map = null;
+    }
+    lumaMaps.set(id, map);
+  }
+  if (!map) return 0;
+  const img = figureImage(id);
+  const w = img?.naturalWidth || LUMA_SIZE;
+  const h = img?.naturalHeight || LUMA_SIZE;
+  const cx = Math.floor((px / w) * LUMA_SIZE);
+  const cy = Math.floor((py / h) * LUMA_SIZE);
+  let best = 0;
+  for (let y = Math.max(0, cy - 2); y <= Math.min(LUMA_SIZE - 1, cy + 2); y++) {
+    for (let x = Math.max(0, cx - 2); x <= Math.min(LUMA_SIZE - 1, cx + 2); x++) best = Math.max(best, map[y * LUMA_SIZE + x]);
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------- focus animation
 const shown = new Map<string, number>(); // current opacity per figure, eased toward its target
 let lastT = 0;
@@ -234,6 +273,8 @@ export interface FigureLayerArgs {
   maxJump: number;
   tMs: number;
   reducedMotion: boolean;
+  /** A figure drawn as if the view were centred on it (the selected constellation). */
+  highlight?: string | null;
 }
 
 /** Draw every visible figure, easing each one's opacity toward its target (focused figure brighter). */
@@ -248,7 +289,7 @@ export function drawFigureLayer(a: FigureLayerArgs): void {
   settling = false;
   for (let i = 0; i < a.figs.length; i++) {
     const f = a.figs[i];
-    const target = night * (i === focus ? FIGURE_ALPHA.focus : FIGURE_ALPHA.rest);
+    const target = night * (i === focus || f.id === a.highlight ? FIGURE_ALPHA.focus : FIGURE_ALPHA.rest);
     const cur = shown.get(f.id) ?? target;
     const next = cur + (target - cur) * k;
     shown.set(f.id, next);

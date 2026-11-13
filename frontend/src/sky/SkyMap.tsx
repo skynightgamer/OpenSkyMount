@@ -37,8 +37,8 @@ import {
   type Flight,
   type ViewPose,
 } from "./scenery";
-import { buildFigureMesh, FIGURE_INFO, type FigureMesh } from "./figures";
-import { drawFigureLayer, figureImageRevision, figureLayerSettling } from "./figurerender";
+import { buildFigureMesh, FIGURE_INFO, figureNightFactor, figureUnder, type FigureMesh } from "./figures";
+import { drawFigureLayer, figureImageRevision, figureLayerSettling, figureLuma } from "./figurerender";
 import { ChangeTracker, DRIFT_PX, quantize, shouldPresent, skyDriftPx, type Motion } from "./framegate";
 import { wheelZoomFactor } from "./zoom";
 import { Icon } from "../components/Icon";
@@ -50,7 +50,7 @@ const RETICLE_BUSY_MS = RETICLE.rippleDelayMs + RETICLE.rippleMs + 100;
 
 interface Catalog {
   stars: [number, number, number, number, number, string][];
-  constellations: { id: string; name: string; label_ra: number; label_dec: number; lines: [number, number][][] }[];
+  constellations: { id: string; name: string; english: string; label_ra: number; label_dec: number; lines: [number, number][][] }[];
   dsos: { id: string; name: string; type: string; mag: number | null; ra: number; dec: number }[];
 }
 
@@ -77,7 +77,7 @@ interface Frame {
 interface Prepared {
   starVec: Float64Array;
   stars: Catalog["stars"];
-  lines: { con: string; vecs: Vec3[][]; label: Vec3; name: string }[];
+  lines: { con: string; vecs: Vec3[][]; label: Vec3; name: string; english: string }[];
   dsos: (Catalog["dsos"][number] & { v: Vec3 })[];
   /** Constellation artwork pinned to the sky (see figures.ts). */
   figures: FigureMesh[];
@@ -131,6 +131,7 @@ export function loadCatalog(): Promise<Prepared> {
           lines: c.constellations.map((k) => ({
             con: k.id,
             name: k.name,
+            english: k.english,
             label: radecToVec(k.label_ra, k.label_dec),
             vecs: k.lines.map((seg) => seg.map((p) => radecToVec(p[0], p[1]))),
           })),
@@ -449,13 +450,19 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
         select(hit.id);
         return;
       }
-      // Empty sky: select the J2000 position under the cursor.
+      // Empty sky: the painted figure under the cursor selects its constellation, otherwise the J2000 position.
       const fr = frameRef.current;
       if (!fr) return;
       const v = unproject(basis(viewRef.current), x, y);
       const [alt] = vecToAltaz(v);
       const m = advanceMatrix(fr.f.matrix, simNow() - fr.f.time);
-      const [ra, dec] = vecToRadec(mulMtV(m, v));
+      const j2000 = mulMtV(m, v);
+      const cat = catRef.current;
+      if (cat && layersRef.current.figures && figureNightFactor(fr.f.sun_alt) > 0.3) {
+        const fig = figureUnder(cat.figures, j2000, figureLuma);
+        if (fig && cat.lines.some((c) => c.con === fig)) return select(`con:${fig}`);
+      }
+      const [ra, dec] = vecToRadec(j2000);
       select(alt > -90 ? `radec:${ra.toFixed(4)},${dec.toFixed(4)}` : null);
     };
     canvas.addEventListener("pointerdown", down);
@@ -540,8 +547,17 @@ function hoverLabel(id: string, cat: Prepared | null, f?: Frame): string {
     const d = cat.dsos.find((x) => "dso:" + x.id === id);
     return d ? `${d.id} ${d.name}` : id;
   }
+  if (id.startsWith("con:") && cat) {
+    const c = cat.lines.find((x) => x.con === id.slice(4));
+    return c ? constellationTitle(c) : id;
+  }
   const b = f?.bodies.find((x) => x.id === id);
   return b ? b.name : id;
+}
+
+/** "Canis Major · Greater Dog": the Latin name with its English translation when they differ. */
+function constellationTitle(c: { name: string; english: string }): string {
+  return c.english && c.english.toLowerCase() !== c.name.toLowerCase() ? `${c.name} · ${c.english}` : c.name;
 }
 
 // ------------------------------------------------------------------ drawing
@@ -721,7 +737,7 @@ function renderSky(
 
     if (layers.figures && cat.figures.length) {
       // Painted constellation art, behind the stick figures and stars.
-      drawFigureLayer({ ctx, b, m, figs: cat.figures, w, h, dpr: ctx.getTransform().a, fov: view.fov, sunAlt, maxJump, tMs, reducedMotion: REDUCED_MOTION });
+      drawFigureLayer({ ctx, b, m, figs: cat.figures, w, h, dpr: ctx.getTransform().a, fov: view.fov, sunAlt, maxJump, tMs, reducedMotion: REDUCED_MOTION, highlight: selId?.startsWith("con:") ? selId.slice(4) : null });
     }
 
     if (layers.constellations) {
@@ -736,9 +752,16 @@ function renderSky(
         ctx.fillStyle = "rgba(150,172,210,0.5)";
         ctx.font = "italic 11px system-ui, sans-serif";
         ctx.textAlign = "center";
+        const sub = view.fov < 80; // zoomed in enough to have room for the English name under the Latin one
         for (const c of cat.lines) {
           const p = project(b, mulMV(m, c.label), 0);
-          if (p) ctx.fillText(c.name, p[0], p[1]);
+          if (!p) continue;
+          ctx.font = "italic 11px system-ui, sans-serif";
+          ctx.fillText(c.name, p[0], p[1]);
+          if (sub && c.english && c.english.toLowerCase() !== c.name.toLowerCase()) {
+            ctx.font = "10px system-ui, sans-serif";
+            ctx.fillText(c.english, p[0], p[1] + 12);
+          }
         }
       }
     }
@@ -1020,6 +1043,7 @@ function reticleRadius(id: string, cat: Prepared | null, b: Basis): number {
     return 9.5 + Math.max(0, Math.min(3.5, 2.5 - mag)) * 1.6;
   }
   if (id.startsWith("planet:") || id.startsWith("dso:")) return 12.5;
+  if (id.startsWith("con:")) return 17;
   return 10;
 }
 
@@ -1171,6 +1195,10 @@ function markerVec(id: string, fr: { f: Frame }, cat: Prepared | null, now: numb
   if (id.startsWith("dso:") && cat) {
     const d = cat.dsos.find((x) => "dso:" + x.id === id);
     if (d) return mulMV(m, d.v);
+  }
+  if (id.startsWith("con:") && cat) {
+    const c = cat.lines.find((x) => x.con === id.slice(4));
+    if (c) return mulMV(m, c.label);
   }
   if (id.startsWith("radec:")) {
     const [ra, dec] = id.slice(6).split(",").map(Number);

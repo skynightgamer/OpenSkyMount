@@ -25,6 +25,7 @@ from skyfield.timelib import Time
 
 from ..config import ObserverConfig
 from .catalog import Catalog, load_catalog
+from .lore import english_name, story
 from .orbits import MinorBodyElements, OrbitStore, SatelliteElements
 
 MAX_FRAME_ORBIT_OBJECTS = 50  # user-supplied objects drawn on the sky map
@@ -66,7 +67,7 @@ class TargetError(ValueError):
 class Target:
     id: str
     name: str
-    kind: str  # star | planet | moon | sun | dso | radec | altaz | satellite | comet | asteroid
+    kind: str  # star | planet | moon | sun | dso | constellation | radec | altaz | satellite | comet | asteroid
     ra_deg: float | None = None  # J2000 / ICRS for fixed objects
     dec_deg: float | None = None
     alt_deg: float | None = None  # only for kind == altaz
@@ -102,7 +103,7 @@ class Target:
     @property
     def sidereal(self) -> bool:
         """Fixed on the celestial sphere (stars, DSOs, RA/Dec points)."""
-        return self.kind in ("star", "dso", "radec")
+        return self.kind in ("star", "dso", "radec", "constellation")
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -185,6 +186,14 @@ class AstronomyEngine:
                 "dso:" + dso["id"], label, "dso", ra_deg=dso["ra"], dec_deg=dso["dec"],
                 magnitude=dso["mag"], type_label=dso["type"],
             )
+        if low.startswith("con:"):
+            con = self.catalog.constellation_by_id(tid[4:])
+            if con is None:
+                raise TargetError(f"unknown constellation {target_id!r}")
+            # The centre of the figure: the label position of the constellation catalog (J2000).
+            label = con["name"] if con["english"] == con["name"] else f"{con['name']} ({con['english']})"
+            return Target(f"con:{con['id']}", label, "constellation", ra_deg=float(con["label_ra"]),
+                          dec_deg=float(con["label_dec"]), constellation=con["id"], type_label="Constellation")
         if low.startswith("radec:"):
             ra, dec = _parse_pair(tid[6:])
             if not (0 <= ra < 360 and -90 <= dec <= 90):
@@ -545,6 +554,9 @@ class AstronomyEngine:
         }
         if target.kind == "moon":
             info.update(self.moon_phase(unix))
+        if target.kind == "constellation":
+            info["lore"] = {"id": target.constellation, "english": english_name(target.constellation or ""),
+                            "story": story(target.constellation or "")}
         if target.kind == "satellite":
             sat = self._skyfield_body(target)
             info["sunlit"] = bool(sat.at(self.time(unix)).is_sunlit(self.eph))

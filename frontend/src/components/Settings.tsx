@@ -2,7 +2,7 @@
 // Categories on the left; per-device display options apply at once, mount settings are saved together with Save
 // (they need control authority). The Connections page shows how Alpaca programs reach this server.
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { resolveZone, timeZones, zoneLabel } from "../format";
+import { NIGHT_LEVEL_MIN, resolveZone, timeZones, zoneLabel } from "../format";
 import { usePresence } from "../presence";
 import { command, getState, isController, setPrefs, simNow, toast, useStore } from "../store";
 import { Icon, type IconName } from "./Icon";
@@ -252,6 +252,21 @@ function DisplayPage() {
               </option>
             ))}
           </select>
+        )}
+      </Row>
+      <Row label="Night mode brightness" hint={`${Math.round(prefs.nightLevel * 100)} % in Night mode (top bar). Lower it until the screen no longer hurts your dark adaptation.`}>
+        {(id, d) => (
+          <input
+            id={id}
+            aria-describedby={d}
+            type="range"
+            min={Math.round(NIGHT_LEVEL_MIN * 100)}
+            max={100}
+            step={5}
+            value={Math.round(prefs.nightLevel * 100)}
+            onChange={(e) => setPrefs({ nightLevel: Number(e.target.value) / 100 })}
+            aria-label="Night mode brightness"
+          />
         )}
       </Row>
     </Group>

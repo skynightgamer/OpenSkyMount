@@ -513,6 +513,26 @@ def create_app(
             cache[key] = _finite(best_targets(o.engine, unix, min_alt=min_alt, kind=kind, limit=limit))
         return JSONResponse(cache[key])
 
+    @app.get("/api/events")
+    def sky_events(
+        t: float | None = None,
+        days: float = Query(45.0, ge=1.0, le=180.0),
+        min_importance: int = Query(1, ge=1, le=3),
+    ) -> JSONResponse:
+        """Upcoming sky events for the observer's site (moon phases, eclipses, conjunctions, meteor showers, ...)."""
+        from ..astro.events import upcoming_events
+
+        o = obsv()
+        unix = when(t)
+        obs = o.config.observer
+        key = (round(unix / 3600), days, obs.latitude, obs.longitude, obs.elevation_m)
+        cache = o.__dict__.setdefault("_events_cache", {})
+        if key not in cache:
+            cache.clear()
+            cache[key] = _finite(upcoming_events(o.engine, unix, days))
+        data = cache[key]
+        return JSONResponse({**data, "events": [e for e in data["events"] if e["importance"] >= min_importance]})
+
     # ---- user-supplied orbital elements (satellites, comets, asteroids)
     @app.get("/api/orbits")
     def orbits_list() -> JSONResponse:

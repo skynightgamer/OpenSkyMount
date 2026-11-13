@@ -90,6 +90,21 @@ export function pixelToVec(fit: FigureFit, px: number, py: number): Vec3 {
   return tangentToVec(fit.ra0, fit.dec0, fit.ax[0] * px + fit.ax[1] * py + fit.ax[2], fit.ay[0] * px + fit.ay[1] * py + fit.ay[2]);
 }
 
+/** Picture pixel under a sky direction (J2000 unit vector): inverse of {@link pixelToVec}; null if the fit is degenerate. */
+export function vecToPixel(fit: FigureFit, v: Vec3): [number, number] | null {
+  const ra = ((Math.atan2(v[1], v[0]) / DEG) % 360 + 360) % 360;
+  const dec = Math.asin(Math.max(-1, Math.min(1, v[2] / Math.hypot(...v)))) / DEG;
+  if (angleDeg(radecToVec(fit.ra0, fit.dec0), v) > 89) return null; // the tangent plane does not reach this far
+  const [x, y] = skyToTangent(fit.ra0, fit.dec0, ra, dec);
+  const [a, b, c] = fit.ax;
+  const [d, e, f] = fit.ay;
+  const det = a * e - b * d;
+  if (Math.abs(det) < 1e-12) return null;
+  const X = x - c;
+  const Y = y - f;
+  return [(e * X - b * Y) / det, (a * Y - d * X) / det];
+}
+
 export interface FigureMesh {
   id: string;
   /** Unit vector (J2000) at the middle of the picture. */
@@ -129,4 +144,36 @@ export function figureNightFactor(sunAlt: number): number {
 /** Angular distance (deg) between two unit vectors. */
 export function angleDeg(a: Vec3, b: Vec3): number {
   return Math.atan2(Math.hypot(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]), a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / DEG;
+}
+
+/** Brightness (0..255) of a figure's picture at a pixel; the art is grey paint on black, so 0 is empty sky. */
+export type LumaAt = (id: string, px: number, py: number) => number;
+
+/** Paint at least this bright counts as part of the figure when clicking. */
+export const FIGURE_HIT_LUMA = 38;
+
+const fitCache = new Map<string, FigureFit | null>();
+
+/**
+ * The figure whose painted pixels lie under a sky direction (J2000 unit vector), or null. Several pictures may
+ * overlap; the one whose centre is nearest wins. Clicking empty sky between the paint finds nothing.
+ */
+export function figureUnder(figs: FigureMesh[], v: Vec3, luma: LumaAt, info: Record<string, FigureInfo> = FIGURE_INFO): string | null {
+  let best: string | null = null;
+  let bestAngle = Infinity;
+  for (const f of figs) {
+    const ang = angleDeg(f.centre, v);
+    if (ang > f.radiusDeg || ang >= bestAngle) continue;
+    const meta = info[f.id];
+    if (!meta) continue;
+    if (!fitCache.has(f.id)) fitCache.set(f.id, fitFigure(meta));
+    const fit = fitCache.get(f.id);
+    const px = fit ? vecToPixel(fit, v) : null;
+    if (!px || px[0] < 0 || px[1] < 0 || px[0] >= meta.w || px[1] >= meta.h) continue;
+    if (luma(f.id, px[0], px[1]) >= FIGURE_HIT_LUMA) {
+      best = f.id;
+      bestAngle = ang;
+    }
+  }
+  return best;
 }

@@ -213,6 +213,8 @@ interface Info {
   illuminated?: number;
   sunlit?: boolean;
   elements_age_days?: number | null;
+  /** Constellations: the English name and a short story. */
+  lore?: { id: string; english: string; story: string | null };
 }
 
 export function TargetPanel() {
@@ -272,6 +274,11 @@ export function TargetPanel() {
         {info.sunlit != null ? ` · ${info.sunlit ? "sunlit" : "in Earth's shadow"}` : ""}
         {info.elements_age_days != null ? ` · TLE ${info.elements_age_days.toFixed(1)} d old` : ""}
       </div>
+      {info.lore?.story && (
+        <p className="lore">
+          <strong>{info.lore.english}.</strong> {info.lore.story}
+        </p>
+      )}
       {(info.notes.length > 0 || rises) && (
         <ul className="notes">
           {info.notes.map((n) => (

@@ -10,6 +10,8 @@ from functools import lru_cache
 from importlib import resources
 from typing import Any
 
+from .lore import english_name
+
 BRIGHT_LIMIT = 6.5  # stars sent with the main catalog; fainter ones on demand (zoomed views)
 
 GREEK = {
@@ -80,10 +82,15 @@ class Catalog:
             s.setdefault("plx", 0.0)
         self.star_epoch_jd: float = data.get("star_epoch_jd", 2451545.0)
         self.constellations: list[dict[str, Any]] = data["constellations"]
+        for c in self.constellations:
+            c.setdefault("english", english_name(c["id"]))
         self.dsos: list[dict[str, Any]] = data["dsos"]
         self._by_hip = {s["hip"]: s for s in self.stars}
         self._dso = {d["id"].upper(): d for d in self.dsos}
         self._con_names = {c["id"]: c["name"] for c in self.constellations}
+        self._con_by_id: dict[str, dict[str, Any]] = {}
+        for c in self.constellations:
+            self._con_by_id.setdefault(c["id"], c)  # Serpens has two parts under one id: the first (Caput) represents it
         self._index: list[tuple[str, str, dict[str, Any]]] = []
         for s in self.stars:
             aliases = _desig_aliases(s["desig"]) if s["desig"] else []
@@ -92,9 +99,17 @@ class Catalog:
         for d in self.dsos:
             for key in filter(None, (d["id"], d["name"], d["desig"])):
                 self._index.append((_norm(key), "dso", d))
+        for c in self._con_by_id.values():
+            for key in dict.fromkeys((c["name"], c["english"])):
+                self._index.append((_norm(key), "constellation", c))
 
     def star_by_hip(self, hip: int) -> dict[str, Any]:
         return self._by_hip[hip]
+
+    def constellation_by_id(self, cid: str) -> dict[str, Any] | None:
+        """Constellation by IAU abbreviation (case-insensitive), or None."""
+        low = cid.lower()
+        return next((c for k, c in self._con_by_id.items() if k.lower() == low), None)
 
     def dso_by_id(self, did: str) -> dict[str, Any] | None:
         return self._dso.get(did.upper())
@@ -146,6 +161,9 @@ class Catalog:
                 mag = obj["mag"]
                 add(f"hip:{obj['hip']}", self.star_label(obj), "star", sc - mag * 0.5, mag,
                     self.constellation_name(obj["con"]) if obj["con"] else "")
+            elif kind == "constellation":
+                label = obj["name"] + (f" ({obj['english']})" if obj["english"] != obj["name"] else "")
+                add(f"con:{obj['id']}", label, "constellation", sc - 2, None, "Constellation")
             else:
                 label = obj["id"] + (f" ({obj['name']})" if obj["name"] else "")
                 add(f"dso:{obj['id']}", label, "dso", sc - 3, obj["mag"], obj["type"])

@@ -1,6 +1,6 @@
 // Global client state + WebSocket connection to the OpenSkyMount server.
 import { useSyncExternalStore } from "react";
-import { DEFAULT_PREFS, type DisplayPrefs, isValidZone } from "./format";
+import { clampNightLevel, DEFAULT_PREFS, type DisplayPrefs, isValidZone } from "./format";
 
 export interface TargetSummary {
   id: string;
@@ -179,6 +179,7 @@ function loadPrefs(): DisplayPrefs {
     const p = { ...DEFAULT_PREFS, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? "{}") } as DisplayPrefs;
     if (p.angles !== "dms" && p.angles !== "decimal") p.angles = DEFAULT_PREFS.angles;
     if (typeof p.timeZone !== "string" || !isValidZone(p.timeZone)) p.timeZone = DEFAULT_PREFS.timeZone;
+    p.nightLevel = clampNightLevel(p.nightLevel);
     return p;
   } catch {
     return { ...DEFAULT_PREFS };
@@ -211,6 +212,7 @@ let state: State = {
 /** Display preferences are per device (kept in this browser only). */
 export function setPrefs(patch: Partial<DisplayPrefs>): void {
   const prefs = { ...state.prefs, ...patch };
+  prefs.nightLevel = clampNightLevel(prefs.nightLevel);
   setState({ prefs });
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));

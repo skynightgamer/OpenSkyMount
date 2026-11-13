@@ -43,8 +43,17 @@ export interface DisplayPrefs {
   angles: AngleFormat;
   /** "device" (browser time zone), "UTC" or an IANA zone such as "Europe/Berlin". */
   timeZone: string;
+  /** Screen brightness in Night (red-light) mode, NIGHT_LEVEL_MIN..1. */
+  nightLevel: number;
 }
-export const DEFAULT_PREFS: DisplayPrefs = { angles: "dms", timeZone: "device" };
+export const NIGHT_LEVEL_MIN = 0.15;
+export const DEFAULT_PREFS: DisplayPrefs = { angles: "dms", timeZone: "device", nightLevel: 1 };
+
+/** A stored night brightness made safe: finite and within NIGHT_LEVEL_MIN..1 (anything else falls back to full). */
+export function clampNightLevel(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : 1;
+  return Math.min(1, Math.max(NIGHT_LEVEL_MIN, n));
+}
 
 export function deviceTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
