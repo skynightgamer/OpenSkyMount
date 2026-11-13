@@ -16,6 +16,7 @@ import { WelcomeScreen, markWelcomeSeen, welcomeDue } from "./components/Welcome
 import { AlignmentPanel } from "./components/Planner";
 import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
 import { useGamepad } from "./gamepad";
+import { usePresence } from "./presence";
 import MountView from "./mount/MountView";
 import SkyMap, { type Layers } from "./sky/SkyMap";
 import { MANUAL_SPEEDS, isController, useStore } from "./store";
@@ -109,6 +110,7 @@ function Main() {
     }
   };
   const [welcome, setWelcome] = useState(welcomeDue);
+  const welcomePresence = usePresence(welcome, 320);
   const [guide, setGuideState] = useState(() => flag("osm-guide-open"));
   const setGuide = (on: boolean) => {
     setGuideState(on);
@@ -160,9 +162,9 @@ function Main() {
             <Icon name="remote" />
             <span>Hand controller</span>
           </button>
-          <button className={`ghost${night ? " sel" : ""}`} onClick={() => setNight(!night)} aria-pressed={night} title="Red light for use at the telescope">
+          <button className={`ghost${night ? " sel" : ""}`} onClick={() => setNight(!night)} aria-pressed={night} title="Night mode for use at the telescope">
             <Icon name="moon" />
-            <span>Red light</span>
+            <span>Night mode</span>
           </button>
           <button
             className={`ghost${settings.open ? " sel" : ""}`}
@@ -222,8 +224,9 @@ function Main() {
       {guide && !welcome && <SetupGuide onClose={() => setGuide(false)} onOpenSettings={() => openSettings("location")} />}
       <SettingsPanel open={settings.open} tab={settings.tab} onClose={closeSettings} />
       {account && <AccountDialog tab={account} onClose={() => setAccount(null)} />}
-      {welcome && (
+      {welcomePresence.mounted && (
         <WelcomeScreen
+          closing={welcomePresence.closing}
           onClose={closeWelcome}
           onStartGuide={() => {
             closeWelcome();

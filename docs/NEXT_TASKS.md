@@ -3,11 +3,11 @@
 00. Session 12 follow-ups: check the figures' frame rate on a low-end phone (the mesh is cut coarser when small; a
    per-figure cache while the view is still would help if needed); optional label epithets ("Orion · the Hunter"; the
    English names are already in `figures.json`); click a figure to select its constellation; a short myth blurb per
-   figure; run the updated Best tonight browser E2E; decide whether to bundle the full Free Art License text next to `NOTICE.md`; separate Puppis/Vela/Serpens
+   figure; decide whether to bundle the full Free Art License text next to `NOTICE.md`; separate Puppis/Vela/Serpens
    art if a free source appears.
 0. Session 10 follow-ups: HTTPS (task 7) matters more now that accounts exist; optional per-user API tokens for
    scripts instead of the shared password; check the skyline layer's frame rate on a low-end phone; audit the welcome
-   screen, guide and account dialog with a screen reader.
+   screen, guide and account dialog with a screen reader; check guide dragging and wheel/pinch zoom on real touch devices.
 1. Session 6 follow-ups: try a real gamepad (Xbox/PlayStation) and installing the app on a real phone (needs HTTPS,
    task 7, for the service worker); load real CelesTrak/MPC files and compare a satellite pass with a sky observation;
    editable queue items (duration/start time) and per-item "GoTo only"; visual magnitudes for satellites.

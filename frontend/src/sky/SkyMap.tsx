@@ -39,6 +39,7 @@ import {
 } from "./scenery";
 import { buildFigureMesh, FIGURE_INFO, type FigureMesh } from "./figures";
 import { drawFigureLayer } from "./figurerender";
+import { wheelZoomFactor } from "./zoom";
 import { Icon } from "../components/Icon";
 
 /** Users who ask for less motion get instant camera moves and no twinkling or pulsing markers. */
@@ -351,7 +352,9 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
       flightRef.current = null;
-      viewRef.current.fov = clampFov(viewRef.current.fov * Math.exp(e.deltaY * 0.001));
+      // Browsers report wheel distances in pixels, lines or pages. Limit a single event so a
+      // coarse wheel cannot jump straight to an endpoint, while trackpads remain continuous.
+      viewRef.current.fov = clampFov(viewRef.current.fov * wheelZoomFactor(e.deltaY, e.deltaMode, canvas.clientHeight));
     };
     const click = (x: number, y: number) => {
       const hit = nearestHit(hitsRef.current, x, y, 14);

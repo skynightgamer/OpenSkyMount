@@ -1,7 +1,7 @@
 // Simulator setup guide: a docked, step-by-step walkthrough (control, site, payload, night, first GoTo, stopping).
 // Each step checks the live state where it can (e.g. "tracking a target"), so the guide reacts to what the user does
 // anywhere in the app, not only to its own buttons.
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { formatTime } from "../format";
 import { canControl, command, getState, isController, requestControl, select, simNow, toast, useStore } from "../store";
 import { Icon, type IconName } from "./Icon";
@@ -384,6 +384,21 @@ const STEPS: StepDef[] = [
 export function SetupGuide({ onClose, onOpenSettings }: { onClose: () => void; onOpenSettings: () => void }) {
   const [g, setG] = useState<GuideState>(loadGuide);
   const [mini, setMini] = useState(false);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const guideRef = useRef<HTMLElement>(null);
+  const drag = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
+  const place = (x: number, y: number) => {
+    const box = guideRef.current?.getBoundingClientRect();
+    if (!box) return;
+    setPosition({ x: Math.max(0, Math.min(window.innerWidth - box.width, x)), y: Math.max(0, Math.min(window.innerHeight - box.height, y)) });
+  };
+  useEffect(() => {
+    const resize = () => {
+      if (position) place(position.x, position.y);
+    };
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [position]);
   // Re-render on store changes so live checks (control, tracking) update.
   useStore((s) => `${isController(s)}|${s.mount?.mode}|${s.mount?.target?.id}`);
   const step = Math.min(STEPS.length - 1, Math.max(0, g.step));
@@ -407,8 +422,34 @@ export function SetupGuide({ onClose, onOpenSettings }: { onClose: () => void; o
       </button>
     );
   return (
-    <aside className="guide" aria-label="Simulator setup guide">
-      <header>
+    <aside ref={guideRef} className="guide" aria-label="Simulator setup guide" style={position ? { left: position.x, top: position.y, right: "auto", bottom: "auto", width: "min(380px, calc(100vw - 16px))" } : undefined}>
+      <header
+        className="guide-handle"
+        role="group"
+        tabIndex={0}
+        aria-label="Move setup guide with arrow keys or drag"
+        onPointerDown={(e) => {
+          if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+          const box = guideRef.current!.getBoundingClientRect();
+          drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, left: box.left, top: box.top };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current;
+          if (d?.id === e.pointerId) place(d.left + e.clientX - d.x, d.top + e.clientY - d.y);
+        }}
+        onPointerUp={() => { drag.current = null; }}
+        onPointerCancel={() => { drag.current = null; }}
+        onKeyDown={(e) => {
+          const delta: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+          const direction = delta[e.key];
+          if (!direction) return;
+          e.preventDefault();
+          const box = guideRef.current!.getBoundingClientRect();
+          const step = e.shiftKey ? 40 : 10;
+          place(box.left + direction[0] * step, box.top + direction[1] * step);
+        }}
+      >
         <Icon name="compass" />
         <strong>Simulator setup</strong>
         <span className="guide-count">

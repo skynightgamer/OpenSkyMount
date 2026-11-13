@@ -1,5 +1,7 @@
 # Progress
 
+Update on 2026-11-13: renamed the red-light control to Night mode, increased sky-map wheel zoom response and normalized wheel units, added a reduced-motion-aware welcome exit, made the setup guide draggable (also movable with arrow keys), added Settings → About, and shortened the README. `scripts/test.sh`, the production build, and all browser E2E scripts passed. Real-phone and screen-reader checks remain outstanding; real hardware is not verified.
+
 Review on 2026-11-12: credited artwork creator Johan Meuris in the figure notice; the full test script and frontend build passed.
 
 _Last updated: 2026-11-12 (session 12)._ Main branch: `main` (sessions 6–11 merged). Session 12 is on `feat/session-12-constellation-art` (not merged).

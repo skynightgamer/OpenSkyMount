@@ -7,7 +7,7 @@ import { usePresence } from "../presence";
 import { command, getState, isController, setPrefs, simNow, toast, useStore } from "../store";
 import { Icon, type IconName } from "./Icon";
 
-export type SettingsTab = "display" | "location" | "mount" | "simulator" | "connections";
+export type SettingsTab = "display" | "location" | "mount" | "simulator" | "connections" | "about";
 
 const TAB_INFO: Record<SettingsTab, { label: string; icon: IconName }> = {
   display: { label: "Display", icon: "eye" },
@@ -15,6 +15,7 @@ const TAB_INFO: Record<SettingsTab, { label: string; icon: IconName }> = {
   mount: { label: "Mount & safety", icon: "shield" },
   simulator: { label: "Simulator", icon: "flask" },
   connections: { label: "Connections", icon: "plug" },
+  about: { label: "About", icon: "help" },
 };
 
 const EXIT_MS = 160;
@@ -119,6 +120,7 @@ function SettingsSheet({ initialTab, state, onClose }: { initialTab: SettingsTab
           {tab === "mount" && <MountPage payload={payload} setPayload={setPayload} control={control} setControl={setControl} />}
           {tab === "simulator" && <SimulatorPage sim={sim} setSim={setSim} />}
           {tab === "connections" && <ConnectionsPage />}
+          {tab === "about" && <AboutPage />}
         </div>
       </div>
       <footer className="settings-foot">
@@ -210,6 +212,20 @@ function Copyable({ text, label }: { text: string; label: string }) {
 }
 
 // ------------------------------------------------------------------ pages
+function AboutPage() {
+  const version = useStore((s) => s.config!.version);
+  return (
+    <Group title="About OpenSkyMount" desc="Local-first astronomy mount control and simulator.">
+      <dl className="set-facts">
+        <dt>Version</dt><dd>{version}</dd>
+        <dt>Author</dt><dd>skynightgamer and OpenSkyMount contributors</dd>
+        <dt>GitHub</dt><dd><a href="https://github.com/skynightgamer/OpenSkyMount" target="_blank" rel="noreferrer">OpenSkyMount repository</a></dd>
+        <dt>License</dt><dd>MIT</dd>
+      </dl>
+    </Group>
+  );
+}
+
 function DisplayPage() {
   const prefs = useStore((s) => s.prefs);
   const zones = useState(() => timeZones())[0];

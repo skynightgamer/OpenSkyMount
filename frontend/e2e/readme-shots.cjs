@@ -57,10 +57,10 @@ async function waitText(page, selector, re, timeout = 60000) {
   await desk.waitForSelector(".toast", { state: "detached", timeout: 15000 }); // toasts would cover the layer chips
   await desk.screenshot({ path: `${out}/desktop.png` });
 
-  await desk.getByRole("button", { name: "Red light" }).click();
+  await desk.getByRole("button", { name: "Night mode" }).click();
   await desk.waitForTimeout(800);
   await desk.screenshot({ path: `${out}/red-light.png` });
-  await desk.getByRole("button", { name: "Red light" }).click();
+  await desk.getByRole("button", { name: "Night mode" }).click();
 
   // The phone watches the same mount.
   await waitText(phone, ".telemetry .mode", /Tracking/);

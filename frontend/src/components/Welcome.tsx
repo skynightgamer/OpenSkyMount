@@ -139,10 +139,12 @@ const FEATURES: { icon: IconName; title: string; text: string }[] = [
 ];
 
 export function WelcomeScreen({
+  closing,
   onClose,
   onStartGuide,
   onCreateAccount,
 }: {
+  closing: boolean;
   onClose: () => void;
   onStartGuide: () => void;
   onCreateAccount: () => void;
@@ -151,14 +153,15 @@ export function WelcomeScreen({
   const simulated = useStore((s) => s.config?.capabilities.simulated ?? true);
   const primary = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    if (closing) return;
     primary.current?.focus();
     const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [onClose]);
+  }, [closing, onClose]);
   const user = info?.user;
   return (
-    <div className="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title">
+    <div className="welcome" role="dialog" aria-modal="true" aria-labelledby="welcome-title" data-state={closing ? "closing" : "open"} aria-hidden={closing || undefined}>
       <Starfield />
       <div className="welcome-card">
         <button className="ghost welcome-close" onClick={onClose} aria-label="Close welcome screen">

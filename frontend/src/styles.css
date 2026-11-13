@@ -551,6 +551,10 @@ button.linkish.danger { color: var(--danger); }
 button.big { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 
 .welcome { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.welcome[data-state="closing"] { pointer-events: none; animation: welcome-out 0.32s ease-in both; }
+.welcome[data-state="closing"] .welcome-card { animation: welcome-card-out 0.32s ease-in both; }
+@keyframes welcome-out { to { opacity: 0; } }
+@keyframes welcome-card-out { to { opacity: 0; transform: translateY(-16px) scale(0.97); } }
 .welcome-card {
   position: relative; width: min(720px, 100%); padding: 28px 30px 22px; border: 1px solid rgb(255 255 255 / 0.1); border-radius: 18px;
   background: rgb(13 18 26 / 0.8); box-shadow: 0 40px 100px rgb(0 0 0 / 0.65); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
@@ -558,7 +562,7 @@ button.big { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 
 }
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .welcome-card, .guide, .menu, .settings, .sheet-backdrop, .settings-content { animation: none !important; }
+  .welcome, .welcome-card, .guide, .menu, .settings, .sheet-backdrop, .settings-content { animation: none !important; }
   input.switch, input.switch::after { transition: none; }
 }
 .welcome-close { position: absolute; top: 12px; right: 12px; width: 32px; padding: 0; justify-content: center; display: inline-flex; align-items: center; }
@@ -649,6 +653,8 @@ button.big { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .guide > header { display: flex; align-items: center; gap: 8px; padding: 10px 8px 8px 14px; color: var(--accent); }
+.guide-handle { cursor: grab; touch-action: none; user-select: none; }
+.guide-handle:active { cursor: grabbing; }
 .guide > header strong { color: var(--text); font-size: 13.5px; }
 .guide-count { flex: 1; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .icon-btn { width: 28px; min-height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }

@@ -1,5 +1,7 @@
 # Test results
 
+2026-11-13 UI update: `scripts/test.sh` passed (149 backend tests, 8 optional skips; 59 frontend tests), and the production build passed. All four `scripts/e2e.sh` scenarios passed with locally installed Chromium 1140, including the updated Best tonight flow, Night mode, About, welcome dismissal and guide dragging/keyboard movement. Playwright 1.61 was pointed at the locally installed Chromium using a temporary preload. No real touch device or screen-reader test was performed. The initial sandboxed test run could not bind localhost sockets; the rerun with socket access passed.
+
 Review rerun on 2026-11-12: `scripts/test.sh` passed (149 backend tests, 8 skipped; 57 frontend tests), and the frontend production build passed. The updated Best tonight browser E2E was not rerun in this review.
 
 Last full run: 2026-11-12 (session 11), macOS (local), Python 3.15, Node 22, Playwright 1.48.2 Chromium (installed

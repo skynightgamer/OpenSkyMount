@@ -37,6 +37,19 @@ async function logoutVia(page) {
   await page.getByRole("button", { name: "Start the setup guide" }).click();
   const guide = page.getByRole("complementary", { name: "Simulator setup guide" });
   await guide.waitFor();
+  await page.getByRole("dialog", { name: "OpenSkyMount" }).waitFor({ state: "hidden" });
+  const beforeDrag = await guide.boundingBox();
+  const handle = guide.locator(".guide-handle");
+  const handleBox = await handle.boundingBox();
+  await page.mouse.move(handleBox.x + 30, handleBox.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(handleBox.x - 70, handleBox.y - 45, { steps: 5 });
+  await page.mouse.up();
+  const afterDrag = await guide.boundingBox();
+  if (afterDrag.x >= beforeDrag.x - 50 || afterDrag.y >= beforeDrag.y - 30) throw new Error("guide did not move when dragged");
+  await handle.focus();
+  await page.keyboard.press("ArrowRight");
+  if ((await guide.boundingBox()).x <= afterDrag.x) throw new Error("guide did not move with keyboard");
   await guide.getByRole("button", { name: "Take control", exact: true }).click();
   await guide.getByText("1/7 done").waitFor(); // detected from the live control state
   await guide.getByRole("button", { name: "Next" }).click();
@@ -50,6 +63,16 @@ async function logoutVia(page) {
   await guide.getByText("Choose a payload").waitFor();
   if (await page.getByRole("dialog", { name: "OpenSkyMount" }).count()) throw new Error("welcome screen shown twice");
   await guide.getByRole("button", { name: "Close guide" }).click();
+
+  await page.getByRole("button", { name: "Night mode" }).click();
+  if (!(await page.getByRole("button", { name: "Night mode" }).getAttribute("aria-pressed") === "true")) throw new Error("night mode did not turn on");
+  await page.getByRole("button", { name: "Night mode" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "About" }).click();
+  await page.getByRole("link", { name: "OpenSkyMount repository" }).waitFor();
+  const version = await page.evaluate(() => fetch("/api/health").then((r) => r.json()).then((health) => health.version));
+  if (!(await page.getByRole("tabpanel").innerText()).includes(version)) throw new Error("version missing from About");
+  await page.getByRole("dialog", { name: "Settings" }).getByRole("button", { name: "Close" }).click();
 
   // 2. Create the first admin account from the account menu.
   await page.getByRole("button", { name: "Account" }).click();
