@@ -827,3 +827,27 @@ button.hand-big { min-height: 52px; font-size: 17px; border-radius: 10px; }
 .ev-seen strong { color: #dcebfb; }
 .ev .vis { color: var(--ok); }
 .ev .dim { color: var(--muted); }
+
+/* ---- slew preview ---- */
+.preview { margin: 10px 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: rgb(255 255 255 / 0.02); display: flex; flex-direction: column; gap: 6px; }
+.preview.refused { border-color: rgb(239 109 99 / 0.4); background: rgb(198 47 40 / 0.1); }
+.preview.refused small { color: #f4cdc9; }
+.pv-head { display: flex; justify-content: space-between; align-items: baseline; }
+.pv-line { margin: 0; color: var(--muted); font-size: 12px; }
+.pv-warn { margin: 0; padding-left: 16px; color: var(--warn, #e6b04a); font-size: 12px; line-height: 1.45; }
+.pv-note { color: var(--faint); font-size: 11px; }
+.cable { display: flex; flex-direction: column; gap: 3px; }
+.cable-track { position: relative; height: 14px; border-radius: 7px; background: var(--control); border: 1px solid var(--line-strong); }
+.cable-zone { position: absolute; top: 0; bottom: 0; background: rgb(230 176 74 / 0.22); }
+.cable-zone:first-child { border-radius: 7px 0 0 7px; }
+.cable-zone:nth-child(2) { border-radius: 0 7px 7px 0; }
+.cable-neutral { position: absolute; top: 2px; bottom: 2px; width: 1px; background: var(--faint); }
+.cable-mark { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid var(--bg); }
+.cable-mark.now { background: var(--muted); }
+.cable-mark.after { background: var(--accent); }
+.cable-mark.after.long { background: #e6b04a; }
+.cable-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.cable-key { display: flex; gap: 12px; font-size: 11px; color: var(--muted); }
+.cable-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.cable-dot.now { background: var(--muted); }
+.cable-dot.after { background: var(--accent); }

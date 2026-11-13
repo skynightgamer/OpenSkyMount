@@ -142,6 +142,12 @@ export interface Toast {
   level: "info" | "error";
 }
 
+/** The previewed slew path of the selected target, drawn on the sky map (set by the Target panel). */
+export interface SlewPath {
+  id: string;
+  path: [number, number][];
+}
+
 export interface State {
   connection: "connecting" | "open" | "closed";
   sessionId: string | null;
@@ -156,6 +162,7 @@ export interface State {
   orbitsRevision: number;
   selectedId: string | null;
   /** Ask the sky map to centre on an object (`n` changes on every request). */
+  slewPath: SlewPath | null;
   centerReq: { id: string; n: number } | null;
   toasts: Toast[];
   latencyMs: number | null;
@@ -199,6 +206,7 @@ let state: State = {
   orbitsRevision: 0,
   selectedId: null,
   centerReq: null,
+  slewPath: null,
   toasts: [],
   latencyMs: null,
   auth: "unknown",
@@ -487,6 +495,12 @@ export function releaseControl(): void {
 }
 
 /** Select an object; `center`: also turn the sky map toward it. */
+/** The previewed slew path to draw on the sky map, or null to clear it. */
+export function setSlewPath(p: SlewPath | null): void {
+  if (p === null && state.slewPath === null) return;
+  setState({ slewPath: p });
+}
+
 export function select(id: string | null, center = false): void {
   setState(center && id ? { selectedId: id, centerReq: { id, n: (state.centerReq?.n ?? 0) + 1 } } : { selectedId: id });
 }

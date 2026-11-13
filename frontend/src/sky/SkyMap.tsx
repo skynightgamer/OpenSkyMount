@@ -363,6 +363,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
         mount?.target ? quantize(mount.target.alt, halfPx) : null,
         mount?.target ? quantize(shortestDelta(0, mount.target.az), halfPx) : null,
         st.selectedId,
+        st.slewPath,
       ]);
       const reticleBusy = !!fr && !!st.selectedId && (selAnim.id !== st.selectedId || tMs - selAnim.t0 < RETICLE_BUSY_MS);
       // Slewing pulses and runs dashes, a tracked target's dashes turn slowly, everything else is still.
@@ -953,6 +954,8 @@ function renderOverlay(ctx: CanvasRenderingContext2D, view: View, fr: { f: Frame
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
   }
+  const preview = st.slewPath;
+  if (preview && preview.id === st.selectedId && mount?.mode !== "slewing") drawSlewPath(ctx, b, preview.path, maxJump);
   if (fr && st.selectedId) {
     if (selAnim.id !== st.selectedId) {
       // Glide over from the previous selection if its reticle was on screen a moment ago; otherwise settle in.
@@ -1105,6 +1108,34 @@ function drawSelection(
     ctx.globalAlpha = 1;
   }
   return { v, r, t: tMs };
+}
+
+/** The previewed route of a GoTo (both axes moving at once), dashed, with an arrowhead where it ends. */
+function drawSlewPath(ctx: CanvasRenderingContext2D, b: Basis, path: [number, number][], maxJump: number) {
+  if (path.length < 2) return;
+  const pts = path.map(([alt, az]) => altazToVec(alt, az));
+  ctx.save();
+  ctx.strokeStyle = "rgba(150,210,255,0.85)";
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = "round";
+  ctx.setLineDash([2, 6]);
+  polyline(ctx, b, pts, maxJump);
+  ctx.setLineDash([]);
+  const end = project(b, pts[pts.length - 1], -0.3);
+  let before: [number, number, number] | null = null;
+  for (let i = pts.length - 2; i >= 0 && !before; i--) {
+    const q = project(b, pts[i], -0.3);
+    if (q && end && Math.hypot(q[0] - end[0], q[1] - end[1]) > 6) before = q;
+  }
+  if (end && before) {
+    const ang = Math.atan2(end[1] - before[1], end[0] - before[0]);
+    ctx.beginPath();
+    ctx.moveTo(end[0] - 9 * Math.cos(ang - 0.45), end[1] - 9 * Math.sin(ang - 0.45));
+    ctx.lineTo(end[0], end[1]);
+    ctx.lineTo(end[0] - 9 * Math.cos(ang + 0.45), end[1] - 9 * Math.sin(ang + 0.45));
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /** The mount's target: dashes that run while slewing and a steady ring with ticks once tracking. */

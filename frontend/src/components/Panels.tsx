@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { angleFmt, fixedAngle, fixedNum, formatDateTime, formatTime, fromZonedInput, resolveZone, toZonedInput, zoneLabel } from "../format";
 import { Icon, type IconName } from "./Icon";
 import { ExposurePlanner, TonightList } from "./Planner";
+import { SlewPreview } from "./Preview";
 import { SatellitePasses } from "./Session";
 import {
   MANUAL_SPEEDS,
@@ -288,6 +289,7 @@ export function TargetPanel() {
         </ul>
       )}
       <GotoButtons id={info.id} disabled={!info.above_horizon || info.kind === "sun"} canQueue={info.kind !== "sun"} />
+      {info.above_horizon && info.kind !== "sun" && <SlewPreview id={info.id} />}
       <dl className="grid2">
         <dt>Altitude</dt>
         <dd>{A.alt(info.alt)}</dd>

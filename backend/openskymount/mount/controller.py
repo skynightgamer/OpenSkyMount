@@ -231,13 +231,8 @@ class MountController:
         return self.config.control.allow_solar_targets and self.driver.capabilities().simulated
 
     # ------------------------------------------------------------- commands
-    def goto(self, target_id: str, track: bool | None = None) -> dict[str, Any]:
-        self.command_serial += 1
-        self._require_operational()
-        try:
-            target = self.engine.resolve(target_id)
-        except TargetError as exc:
-            raise CommandError(str(exc)) from exc
+    def _check_goto(self, target: Target) -> tuple[float, float]:
+        """The safety and reachability checks of a GoTo (no state changes). Returns the target's (alt, az) now."""
         ctl = self.config.control
         if target.is_sun and not self._solar_policy_allows():
             raise CommandError("automatic slewing to the Sun is disabled (solar safety); see docs/safety.md")
@@ -259,6 +254,17 @@ class MountController:
                     f"{target.name} is {sep:.1f}° from the Sun (exclusion zone {ctl.sun_exclusion_deg:.0f}°)"
                 )
             self._check_path_avoids_sun(alt, az)
+        return alt, az
+
+    def goto(self, target_id: str, track: bool | None = None) -> dict[str, Any]:
+        self.command_serial += 1
+        self._require_operational()
+        try:
+            target = self.engine.resolve(target_id)
+        except TargetError as exc:
+            raise CommandError(str(exc)) from exc
+        ctl = self.config.control
+        alt, az = self._check_goto(target)
         st = self.driver.status()
         _, m_az = self.model.sky_to_mount(alt, az)
         az_cmd = self._choose_az(target, m_az, st.az.position)

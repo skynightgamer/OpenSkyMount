@@ -495,6 +495,16 @@ def create_app(
             raise HTTPException(404, str(exc)) from exc
         return JSONResponse(_finite(o.engine.info(target, when(t))))
 
+    @app.get("/api/slew_preview")
+    def slew_preview_route(id: str = Query(..., min_length=1, max_length=64)) -> JSONResponse:  # noqa: A002
+        """Read-only plan of a GoTo from the mount's present position: allowed?, duration, axis turns, cable wrap."""
+        from ..mount.preview import slew_preview
+
+        try:
+            return JSONResponse(_finite(slew_preview(obsv().controller, id)))
+        except CommandError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
     @app.get("/api/tonight")
     def tonight(
         t: float | None = None,
