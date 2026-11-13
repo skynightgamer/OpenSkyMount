@@ -84,10 +84,8 @@ class Sequencer:
             self.path.write_text(json.dumps({"items": [asdict(it) for it in self.items]}, indent=1))
 
     # ---------------------------------------------------------------- editing
-    def add(self, target_id: str, start_at: float | None = None, duration_s: float | None = 600.0,
-            extra: dict[str, Any] | None = None) -> QueueItem:
-        if len(self.items) >= MAX_ITEMS:
-            raise CommandError(f"the queue holds at most {MAX_ITEMS} items")
+    def _build(self, target_id: str, start_at: float | None, duration_s: float | None, label: str | None,
+               extra: dict[str, Any] | None) -> QueueItem:
         try:
             target = self.ctl.engine.resolve(target_id)
         except TargetError as exc:
@@ -98,10 +96,44 @@ class Sequencer:
             raise CommandError("start time must be a finite number")
         if duration_s is not None and not (0.0 <= duration_s <= MAX_DURATION_S):
             raise CommandError(f"duration must be between 0 and {MAX_DURATION_S:.0f} s")
-        item = QueueItem(f"q{next(self._ids)}", target.id, target.name, start_at, duration_s, extra=extra or {})
+        name = (label or "").strip()[:80] or target.name
+        return QueueItem(f"q{next(self._ids)}", target.id, name, start_at, duration_s, extra=extra or {})
+
+    def add(self, target_id: str, start_at: float | None = None, duration_s: float | None = 600.0,
+            extra: dict[str, Any] | None = None, label: str | None = None) -> QueueItem:
+        if len(self.items) >= MAX_ITEMS:
+            raise CommandError(f"the queue holds at most {MAX_ITEMS} items")
+        item = self._build(target_id, start_at, duration_s, label, extra)
         self.items.append(item)
         self._save()
         return item
+
+    def add_many(self, entries: list[dict[str, Any]], extra: dict[str, Any] | None = None) -> list[QueueItem]:
+        """Add several items at once, all or none: every entry is checked before the first is queued."""
+        if not entries:
+            raise CommandError("nothing to add")
+        if len(self.items) + len(entries) > MAX_ITEMS:
+            raise CommandError(f"the queue holds at most {MAX_ITEMS} items")
+        first_id = self._serial_peek()
+        try:
+            built = [self._build(str(e.get("target", "")), None if e.get("start_at") is None else float(e["start_at"]),
+                                 None if e.get("duration_s", 600.0) is None else float(e.get("duration_s", 600.0)),
+                                 e.get("label"), {**(extra or {}), "n": i + 1, "of": len(entries)})
+                     for i, e in enumerate(entries)]
+        except (CommandError, TypeError, ValueError) as exc:
+            self._ids = itertools.count(first_id)  # nothing was queued: give the ids back
+            if isinstance(exc, CommandError):
+                raise
+            raise CommandError(f"invalid item: {exc}") from exc
+        self.items.extend(built)
+        self._save()
+        return built
+
+    def _serial_peek(self) -> int:
+        """The next free item number, without consuming it."""
+        nxt = next(self._ids)
+        self._ids = itertools.count(nxt)
+        return nxt
 
     def _find(self, item_id: str) -> QueueItem:
         for it in self.items:

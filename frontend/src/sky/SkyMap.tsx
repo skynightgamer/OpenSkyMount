@@ -41,6 +41,7 @@ import { buildFigureMesh, FIGURE_INFO, figureNightFactor, figureUnder, type Figu
 import { drawFigureLayer, figureImageRevision, figureLayerSettling, figureLuma } from "./figurerender";
 import { ChangeTracker, DRIFT_PX, quantize, shouldPresent, skyDriftPx, type Motion } from "./framegate";
 import { wheelZoomFactor } from "./zoom";
+import { frameOutline, type MosaicPreview } from "../planning";
 import { Icon } from "../components/Icon";
 
 /** Users who ask for less motion get instant camera moves and no pulsing markers. */
@@ -364,6 +365,7 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
         mount?.target ? quantize(shortestDelta(0, mount.target.az), halfPx) : null,
         st.selectedId,
         st.slewPath,
+        st.mosaicPreview,
       ]);
       const reticleBusy = !!fr && !!st.selectedId && (selAnim.id !== st.selectedId || tMs - selAnim.t0 < RETICLE_BUSY_MS);
       // Slewing pulses and runs dashes, a tracked target's dashes turn slowly, everything else is still.
@@ -954,6 +956,7 @@ function renderOverlay(ctx: CanvasRenderingContext2D, view: View, fr: { f: Frame
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
   }
+  if (fr && st.mosaicPreview) drawMosaicPreview(ctx, b, st.mosaicPreview, advanceMatrix(fr.f.matrix, now - fr.f.time), maxJump);
   const preview = st.slewPath;
   if (preview && preview.id === st.selectedId && mount?.mode !== "slewing") drawSlewPath(ctx, b, preview.path, maxJump);
   if (fr && st.selectedId) {
@@ -1108,6 +1111,48 @@ function drawSelection(
     ctx.globalAlpha = 1;
   }
   return { v, r, t: tMs };
+}
+
+/**
+ * The frames of a planned mosaic as the camera would see them now: the top of each picture points to the zenith, as on
+ * an alt-az mount, and the edges are straight in the camera's own picture. Unreachable frames are red.
+ */
+function drawMosaicPreview(ctx: CanvasRenderingContext2D, b: Basis, mosaic: MosaicPreview, m: Mat3, maxJump: number) {
+  const zenith = mulMtV(m, [0, 0, 1]); // up, in the J2000 frame
+  ctx.save();
+  ctx.lineWidth = 1.4;
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  for (const p of mosaic.panels) {
+    const outline = frameOutline(radecToVec(p.ra, p.dec), zenith, mosaic.fov.w, mosaic.fov.h).map((v) => mulMV(m, v));
+    ctx.strokeStyle = p.reachable ? "rgba(130,200,255,0.9)" : "rgba(239,109,99,0.85)";
+    ctx.fillStyle = p.reachable ? "rgba(130,200,255,0.06)" : "rgba(239,109,99,0.08)";
+    const pts = [...outline, outline[0]];
+    ctx.beginPath();
+    let last: [number, number, number] | null = null;
+    let broken = false;
+    for (const v of pts) {
+      const q = project(b, v, -0.3);
+      if (!q) {
+        broken = true;
+        last = null;
+        continue;
+      }
+      if (last === null || Math.hypot(q[0] - last[0], q[1] - last[1]) > maxJump) {
+        if (last !== null) broken = true;
+        ctx.moveTo(q[0], q[1]);
+      } else ctx.lineTo(q[0], q[1]);
+      last = q;
+    }
+    ctx.stroke();
+    if (!broken) ctx.fill();
+    const c = project(b, mulMV(m, radecToVec(p.ra, p.dec)), -0.3);
+    if (c) {
+      ctx.fillStyle = p.reachable ? "rgba(190,225,255,0.95)" : "rgba(255,170,160,0.95)";
+      ctx.fillText(String(p.index + 1), c[0], c[1] + 4);
+    }
+  }
+  ctx.restore();
 }
 
 /** The previewed route of a GoTo (both axes moving at once), dashed, with an arrowhead where it ends. */

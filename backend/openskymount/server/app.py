@@ -283,8 +283,14 @@ class Observatory:
             start = args.get("start_at")
             dur = args.get("duration_s", 600.0)
             item = q.add(str(args.get("target", "")), None if start is None else float(start),
-                         None if dur is None else float(dur))
+                         None if dur is None else float(dur), label=args.get("label"))
             return {"ok": True, "message": f"{item.name} added to the session", "id": item.id}
+        if cmd == "queue_add_many":
+            entries = args.get("items")
+            if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+                raise CommandError("items must be a list of objects")
+            added = q.add_many(entries, extra={"group": str(args.get("group", ""))[:40]} if args.get("group") else None)
+            return {"ok": True, "message": f"{len(added)} items added to the session", "ids": [it.id for it in added]}
         if cmd == "queue_remove":
             q.remove(str(args.get("id")))
         elif cmd == "queue_move":
@@ -511,6 +517,40 @@ def create_app(
         from ..mount.align_stars import suggest_alignment_stars
 
         return JSONResponse(_finite(suggest_alignment_stars(obsv().controller, count)))
+
+    @app.get("/api/mosaic")
+    def mosaic(
+        id: str = Query(..., min_length=1, max_length=64),  # noqa: A002
+        t: float | None = None,
+        cols: int = Query(3, ge=1, le=16),
+        rows: int = Query(2, ge=1, le=16),
+        overlap: float = Query(0.25, ge=0.0, le=0.6),
+        fov_w: float = Query(..., ge=0.2, le=150.0),
+        fov_h: float = Query(..., ge=0.2, le=150.0),
+        dwell_s: float = Query(30.0, ge=0.0, le=3600.0),
+    ) -> JSONResponse:
+        """A grid of overlapping frames around a target, checked against the mount's limits (read-only)."""
+        from ..mount.planning import mosaic_plan
+
+        try:
+            return JSONResponse(_finite(mosaic_plan(obsv().controller, id, when(t), cols, rows, overlap, fov_w, fov_h, dwell_s)))
+        except CommandError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.get("/api/timelapse")
+    def timelapse(
+        id: str = Query(..., min_length=1, max_length=64),  # noqa: A002
+        t: float | None = None,
+        minutes: float = Query(60.0, ge=1.0, le=720.0),
+        interval_s: float = Query(10.0, ge=0.5, le=3600.0),
+    ) -> JSONResponse:
+        """Holding one target for a while: frames, field rotation, altitude range, cable limit (read-only)."""
+        from ..mount.planning import timelapse_plan
+
+        try:
+            return JSONResponse(_finite(timelapse_plan(obsv().controller, id, when(t), minutes, interval_s)))
+        except CommandError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     @app.get("/api/tonight")
     def tonight(

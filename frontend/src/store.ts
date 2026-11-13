@@ -1,6 +1,7 @@
 // Global client state + WebSocket connection to the OpenSkyMount server.
 import { useSyncExternalStore } from "react";
 import { clampNightLevel, DEFAULT_PREFS, type DisplayPrefs, isValidZone } from "./format";
+import type { MosaicPreview } from "./planning";
 
 export interface TargetSummary {
   id: string;
@@ -163,6 +164,7 @@ export interface State {
   selectedId: string | null;
   /** Ask the sky map to centre on an object (`n` changes on every request). */
   slewPath: SlewPath | null;
+  mosaicPreview: MosaicPreview | null;
   centerReq: { id: string; n: number } | null;
   toasts: Toast[];
   latencyMs: number | null;
@@ -207,6 +209,7 @@ let state: State = {
   selectedId: null,
   centerReq: null,
   slewPath: null,
+  mosaicPreview: null,
   toasts: [],
   latencyMs: null,
   auth: "unknown",
@@ -499,6 +502,12 @@ export function releaseControl(): void {
 export function setSlewPath(p: SlewPath | null): void {
   if (p === null && state.slewPath === null) return;
   setState({ slewPath: p });
+}
+
+/** The previewed mosaic frames to draw on the sky map, or null to clear them. */
+export function setMosaicPreview(p: MosaicPreview | null): void {
+  if (p === null && state.mosaicPreview === null) return;
+  setState({ mosaicPreview: p });
 }
 
 export function select(id: string | null, center = false): void {

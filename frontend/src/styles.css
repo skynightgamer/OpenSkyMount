@@ -870,3 +870,16 @@ button.hand-big { min-height: 52px; font-size: 17px; border-radius: 10px; }
 .wiz-step { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .wiz-step p b { color: var(--accent); }
 .wiz-bad { color: var(--warn, #e6b04a); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+/* ---- mosaic and timelapse planner ---- */
+.mz-tabs { display: flex; gap: 4px; margin: 6px 0 8px; }
+.mz-tabs button { flex: 1; min-height: 28px; }
+.mz { display: flex; flex-direction: column; gap: 8px; }
+.mz-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; }
+.mz-num { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 12px; }
+.mz-num .num-field input { width: 100%; }
+.mz-check { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.mz-check input { width: 14px; height: 14px; min-height: 0; padding: 0; margin: 0; }
+.mz-result { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.mz-result p { margin: 0; line-height: 1.45; }
+.mz-warn { color: var(--warn, #e6b04a); }

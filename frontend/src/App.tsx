@@ -15,6 +15,7 @@ import { Icon, Logo } from "./components/Icon";
 import { WelcomeScreen, markWelcomeSeen, welcomeDue } from "./components/Welcome";
 import { AlignmentPanel } from "./components/Planner";
 import { EventsPanel } from "./components/Events";
+import { MosaicPanel } from "./components/Mosaic";
 import { HandController, LogsPanel, OrbitsPanel, SessionPanel } from "./components/Session";
 import { useGamepad } from "./gamepad";
 import { usePresence } from "./presence";
@@ -218,6 +219,7 @@ function Main() {
           <MotionPanel />
           <SessionPanel />
           <EventsPanel />
+          <MosaicPanel />
           <AlignmentPanel />
           <ClockPanel />
           <OrbitsPanel />
