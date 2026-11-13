@@ -505,6 +505,13 @@ def create_app(
         except CommandError as exc:
             raise HTTPException(404, str(exc)) from exc
 
+    @app.get("/api/align_stars")
+    def align_stars(count: int = Query(3, ge=2, le=6)) -> JSONResponse:
+        """Well-spread bright stars for a pointing alignment, in a short order to visit them."""
+        from ..mount.align_stars import suggest_alignment_stars
+
+        return JSONResponse(_finite(suggest_alignment_stars(obsv().controller, count)))
+
     @app.get("/api/tonight")
     def tonight(
         t: float | None = None,

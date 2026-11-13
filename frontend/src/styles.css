@@ -851,3 +851,22 @@ button.hand-big { min-height: 52px; font-size: 17px; border-radius: 10px; }
 .cable-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
 .cable-dot.now { background: var(--muted); }
 .cable-dot.after { background: var(--accent); }
+
+/* ---- star alignment wizard ---- */
+.wiz { margin: 8px 0 12px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: rgb(255 255 255 / 0.02); display: flex; flex-direction: column; gap: 8px; }
+.wiz h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.wiz p { margin: 0; line-height: 1.45; }
+.wiz-start { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.wiz-start label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.wiz-start select { width: auto; min-height: 28px; }
+.wiz-head { display: flex; justify-content: space-between; align-items: center; }
+.wiz-problem { color: var(--warn, #e6b04a); }
+.wiz-stars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.wiz-stars li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; color: var(--muted); }
+.wiz-stars li.now { color: var(--text); }
+.wiz-stars li.done { color: var(--ok); }
+.wiz-stars small { color: var(--faint); }
+.wiz-mark { text-align: center; }
+.wiz-step { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.wiz-step p b { color: var(--accent); }
+.wiz-bad { color: var(--warn, #e6b04a); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }

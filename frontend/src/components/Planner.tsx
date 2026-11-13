@@ -1,3 +1,4 @@
+import { AlignWizard } from "./AlignWizard";
 import { useEffect, useState } from "react";
 import {
   CAMERA_PRESETS,
@@ -241,6 +242,7 @@ export function AlignmentPanel() {
             ? `${n} point${n > 1 ? "s" : ""}: zero offsets corrected. Add ${model.tilt_min_points - n} more, spread in azimuth, to correct base tilt.`
             : `${n} points: zero offsets and base tilt corrected.`}
       </p>
+      <AlignWizard />
       {n > 0 && (
         <>
           <dl className="grid2">
