@@ -24,8 +24,44 @@ async function waitText(page, selector, re, timeout = 30000) {
   );
 }
 
+async function checkIdleMountMarker(browser) {
+  // At maximum FOV in this wide, shallow sky view, the parked mount is visible 90° from the centre.
+  const ctx = await newCtx(browser, { viewport: { width: 1440, height: 430 }, reducedMotion: "reduce" });
+  try {
+    await ctx.addInitScript(() => {
+      const fillText = CanvasRenderingContext2D.prototype.fillText;
+      let mountDrawn = false;
+      window.idleMarkerFrames = [];
+      CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+        if (this.canvas.matches(".sky-canvas")) {
+          if (text === "mount") mountDrawn = true;
+          if (text.includes("  ·  FOV ")) {
+            if (text.includes("FOV 170°") && text.includes("facing E 90°, alt 25°")) {
+              window.idleMarkerFrames.push(mountDrawn);
+            }
+            mountDrawn = false;
+          }
+        }
+        return fillText.call(this, text, ...args);
+      };
+    });
+    const page = await ctx.newPage();
+    await page.goto(base);
+    await waitText(page, ".telemetry .mode", /Idle/);
+    await page.getByRole("button", { name: "Face E" }).click();
+    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.getByRole("button", { name: "Zoom out" }).click();
+    await page.waitForFunction(() => window.idleMarkerFrames.length >= 75);
+    const stable = await page.evaluate(() => window.idleMarkerFrames.every(Boolean));
+    if (!stable) throw new Error("mount marker dropped out while idle");
+  } finally {
+    await ctx.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
+  await checkIdleMountMarker(browser);
   const errors = [];
   const ctxA = await newCtx(browser, { viewport: { width: 1440, height: 900 } });
   const ctxB = await newCtx(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

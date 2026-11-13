@@ -25,3 +25,7 @@
 7. HTTPS for LAN mode (self-signed certificate or a reverse-proxy guide) so the password is not sent in clear text.
 8. Physical bench test with an ESP32 implementing OSM/1 (see the docs/hardware.md integration plan). **Blocked by
    hardware.**
+
+## Completed follow-ups
+
+- Fixed the idle simulator's blinking mount crosshair and added a browser regression at maximum sky-map zoom-out.

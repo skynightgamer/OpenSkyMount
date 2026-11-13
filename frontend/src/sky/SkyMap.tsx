@@ -845,8 +845,10 @@ function render(
   } else selAnim = { id: null, t0: 0, from: null, fromR: null };
   if (mount && targetVec) drawTargetMark(ctx, b, targetVec, tMs, mount.mode);
   if (mount && mountVec) {
-    const p = project(b, mountVec, 0);
-    if (p) {
+    // A wide canvas can show directions past 90° from the view centre. Clip at the canvas edges instead.
+    const p = project(b, mountVec, -1);
+    const margin = 50; // room for the crosshair, pulse and label
+    if (p && p[0] >= -margin && p[0] <= w + margin && p[1] >= -margin && p[1] <= h + margin) {
       const moving = ["slewing", "tracking", "manual", "homing"].includes(mount.mode);
       if (moving) {
         ctx.globalCompositeOperation = "lighter";
