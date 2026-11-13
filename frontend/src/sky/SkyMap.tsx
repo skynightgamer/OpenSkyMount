@@ -27,6 +27,7 @@ import {
   landscapeAlt,
   makeFlight,
   reticleAt,
+  RETICLE,
   ridgeAlt,
   sceneryColors,
   separation,
@@ -37,12 +38,15 @@ import {
   type ViewPose,
 } from "./scenery";
 import { buildFigureMesh, FIGURE_INFO, type FigureMesh } from "./figures";
-import { drawFigureLayer } from "./figurerender";
+import { drawFigureLayer, figureImageRevision, figureLayerSettling } from "./figurerender";
+import { ChangeTracker, DRIFT_PX, quantize, shouldPresent, skyDriftPx, type Motion } from "./framegate";
 import { wheelZoomFactor } from "./zoom";
 import { Icon } from "../components/Icon";
 
 /** Users who ask for less motion get instant camera moves and no pulsing markers. */
 const REDUCED_MOTION = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+/** How long (ms) a new selection's reticle animates (settle, ripple, name tag); every display frame is drawn meanwhile. */
+const RETICLE_BUSY_MS = RETICLE.rippleDelayMs + RETICLE.rippleMs + 100;
 
 interface Catalog {
   stars: [number, number, number, number, number, string][];
@@ -254,27 +258,34 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
     };
   }, [observer?.latitude, observer?.longitude, observer?.elevation_m, orbitsRev]);
 
-  // Render loop.
+  // Render loop. Redrawing the whole sky 60 times a second while nothing moves is what kept a CPU core busy on an
+  // idle mount, so the loop only draws what changed: the sky (stars, figures, grids, ground) goes into an off-screen
+  // canvas that is redrawn when the camera, the layers, the data or Earth's rotation (a fraction of a pixel) changed;
+  // the overlay (mount, selection, status pill) is composited on top when it changes or animates. A fully idle map
+  // presents about once a second.
   useEffect(() => {
     let raf = 0;
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
+    const skyCanvas = document.createElement("canvas");
+    skyCanvas.className = "sky-canvas"; // not in the page; the class lets tests that hook the sky drawing see this layer
+    const sky = skyCanvas.getContext("2d")!;
+    const skyInputs = new ChangeTracker();
+    const overlayInputs = new ChangeTracker();
+    let skyNow = NaN; // simulation time the cached sky was drawn for
+    let layersObj: Layers | null = null;
+    let layersKey = "";
     let lastFrame = performance.now();
+    let lastPresent = -Infinity;
+    let presents = 0;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const wrap = wrapRef.current;
       if (!wrap) return;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(2, window.devicePixelRatio || 1); // 3x phones: 2.25x the pixels for no visible gain
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
       if (w < 1 || h < 1) return; // hidden (another tab on a phone): nothing to draw
-      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(h * dpr);
-        canvas.style.width = `${w}px`;
-        canvas.style.height = `${h}px`;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const view = viewRef.current;
       view.width = w;
       view.height = h;
@@ -295,7 +306,84 @@ export default function SkyMap({ layers, followMount }: { layers: Layers; follow
         view.az = wrap360(view.az + shortestDelta(view.az, st.mount.position.az) * k);
         view.alt += (Math.max(-20, Math.min(90, st.mount.position.alt)) - view.alt) * k;
       }
-      render(ctx, view, frameRef.current, catRef.current, layersRef.current, hitsRef, tMs);
+
+      // Does the cached sky still match what should be on screen?
+      const fr = frameRef.current;
+      const cat = catRef.current;
+      const now = simNow();
+      const b = basis(view);
+      const quarterPx = b.scale * DEG * 4; // a quarter pixel per degree at the view centre, to ignore sub-pixel creep
+      if (layersRef.current !== layersObj) {
+        layersObj = layersRef.current;
+        layersKey = JSON.stringify(layersObj);
+      }
+      const skyChanged = skyInputs.changed([
+        w,
+        h,
+        dpr,
+        quantize(shortestDelta(0, view.az), quarterPx), // signed, so creeping across north is not a jump
+        quantize(view.alt, quarterPx),
+        quantize(Math.log(view.fov), 1000),
+        layersKey,
+        fr,
+        cat,
+        faintTier,
+        figureImageRevision(),
+        st.selectedId,
+      ]);
+      const redrawSky = skyChanged || figureLayerSettling() || !(skyDriftPx(now - skyNow, b.scale) < DRIFT_PX);
+      if (redrawSky) {
+        const pw = Math.round(w * dpr);
+        const ph = Math.round(h * dpr);
+        if (canvas.width !== pw || canvas.height !== ph) {
+          canvas.width = pw;
+          canvas.height = ph;
+          canvas.style.width = `${w}px`;
+          canvas.style.height = `${h}px`;
+        }
+        if (skyCanvas.width !== pw || skyCanvas.height !== ph) {
+          skyCanvas.width = pw;
+          skyCanvas.height = ph;
+        }
+        sky.setTransform(dpr, 0, 0, dpr, 0, 0);
+        renderSky(sky, view, fr, cat, layersRef.current, hitsRef, tMs, now);
+        skyNow = now;
+      }
+
+      // Does the overlay need a new frame?
+      const mount = st.mount;
+      // Positions in half pixels, azimuth around 0 kept signed: encoder noise at north (0.002° and 359.998°) must not
+      // look like a jump across the sky.
+      const halfPx = quarterPx / 2;
+      const overlayChanged = overlayInputs.changed([
+        mount ? quantize(mount.position.alt, halfPx) : null,
+        mount ? quantize(shortestDelta(0, mount.position.az), halfPx) : null,
+        mount?.mode,
+        mount?.target ? quantize(mount.target.alt, halfPx) : null,
+        mount?.target ? quantize(shortestDelta(0, mount.target.az), halfPx) : null,
+        st.selectedId,
+      ]);
+      const reticleBusy = !!fr && !!st.selectedId && (selAnim.id !== st.selectedId || tMs - selAnim.t0 < RETICLE_BUSY_MS);
+      // Slewing pulses and runs dashes, a tracked target's dashes turn slowly, everything else is still.
+      const motion: Motion = fl
+        ? "full"
+        : REDUCED_MOTION
+          ? "none"
+          : reticleBusy || mount?.mode === "slewing"
+            ? "full"
+            : mount?.target
+              ? "ambient"
+              : "none";
+      if (!redrawSky && !shouldPresent(overlayChanged, motion, tMs - lastPresent)) return;
+      lastPresent = tMs;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.drawImage(skyCanvas, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderOverlay(ctx, view, fr, cat, tMs, now);
+      canvas.dataset.draws = String(++presents); // lets the browser tests count presented frames
     };
     draw();
     return () => cancelAnimationFrame(raf);
@@ -551,7 +639,12 @@ function dsoSymbol(ctx: CanvasRenderingContext2D, type: string, x: number, y: nu
   }
 }
 
-function render(
+/**
+ * The sky itself: background, grids, figures, stars, planets, ground and compass. It only changes with the camera, the
+ * layers, new data or Earth's rotation, so the render loop caches it and redraws it when one of those changes.
+ * `now` is the simulation time the sky is drawn for.
+ */
+function renderSky(
   ctx: CanvasRenderingContext2D,
   view: View,
   fr: { f: Frame; fetchedAt: number } | null,
@@ -559,15 +652,14 @@ function render(
   layers: Layers,
   hitsRef: { current: Hit[] },
   tMs: number,
+  now: number,
 ) {
   const { width: w, height: h } = view;
   const b = basis(view);
   const st = getState();
-  const now = simNow();
   const sunAlt = fr?.f.sun_alt ?? -30;
   const m = fr ? advanceMatrix(fr.f.matrix, now - fr.f.time) : null;
   const hits: Hit[] = [];
-  const tSec = tMs / 1000;
   const selId = st.selectedId; // its name tag replaces the plain label
   const maxJump = Math.max(w, h) * 0.5;
 
@@ -805,6 +897,20 @@ function render(
     const p = project(b, altazToVec(-2.5, i * 45), 0);
     if (p) ctx.fillText(label, p[0], p[1] + 10);
   });
+  hitsRef.current = hits;
+}
+
+/**
+ * What sits on top of the cached sky: the mount trail, slew line, selection reticle, target and mount markers and the
+ * status pill. These move with the mount and animate, so they are drawn on every presented frame.
+ */
+function renderOverlay(ctx: CanvasRenderingContext2D, view: View, fr: { f: Frame; fetchedAt: number } | null, cat: Prepared | null, tMs: number, now: number) {
+  const { width: w, height: h } = view;
+  const b = basis(view);
+  const st = getState();
+  const tSec = tMs / 1000;
+  const maxJump = Math.max(w, h) * 0.5;
+  ctx.lineCap = "round";
 
   // Mount trail, slew line, selection, target and mount markers.
   const mount = st.mount;
@@ -877,7 +983,6 @@ function render(
       ctx.fillText("mount", p[0] + 12, p[1] + 20);
     }
   }
-  hitsRef.current = hits;
 
   // Status pill: light, field of view and where the view is looking.
   const state = fr?.f.sky_state ?? "loading…";

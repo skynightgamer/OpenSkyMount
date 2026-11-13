@@ -760,7 +760,12 @@ export default function MountView() {
     const c = s.config;
     return c ? c.payloads[c.config.payload]?.shape ?? "phone" : "phone";
   });
-  const payloadRef = useRef<{ holder: THREE.Group | null; shape: string; mats: Mats | null }>({ holder: null, shape: "", mats: null });
+  const payloadRef = useRef<{ holder: THREE.Group | null; shape: string; mats: Mats | null; invalidate: () => void }>({
+    holder: null,
+    shape: "",
+    mats: null,
+    invalidate: () => {},
+  });
 
   useEffect(() => {
     const wrap = wrapRef.current!;
@@ -840,6 +845,15 @@ export default function MountView() {
     scene.add(targetLine);
     const pivot = new THREE.Vector3(0, AZ_HEIGHT + ALT_HEIGHT, 0);
 
+    // Render on demand: the scene only changes when the mount moves, the camera is dragged (or still gliding to a
+    // stop), the view is resized or the payload is swapped. A parked mount costs no GPU or CPU time at all, where
+    // drawing every display frame (with soft shadows) kept a core busy.
+    let dirty = true;
+    const invalidate = () => {
+      dirty = true;
+    };
+    payloadRef.current.invalidate = invalidate;
+    controls.addEventListener("change", invalidate);
     const resize = () => {
       const w = wrap.clientWidth;
       const h = wrap.clientHeight;
@@ -848,12 +862,15 @@ export default function MountView() {
       renderer.domElement.style.height = `${h}px`;
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
+      invalidate();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     resize();
 
     let raf = 0;
+    let renders = 0;
+    let lastPose = "";
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const m = getState().mount;
@@ -861,23 +878,36 @@ export default function MountView() {
         // Physical axis angles (simulation ground truth when available).
         const altAxis = m.driver.truth?.alt_axis ?? m.position.alt_axis;
         const azAxis = m.driver.truth?.az_axis ?? m.position.az_axis;
-        azGroup.rotation.y = -azAxis * DEG;
-        altGroup.rotation.x = altAxis * DEG;
-        if (m.target) {
-          const a = m.target.alt * DEG;
-          const z = m.target.az * DEG;
-          const dir = new THREE.Vector3(Math.cos(a) * Math.sin(z), Math.sin(a), -Math.cos(a) * Math.cos(z));
-          targetGeo.setFromPoints([pivot, pivot.clone().addScaledVector(dir, 2.4)]);
-          targetLine.computeLineDistances();
-          targetLine.visible = true;
-        } else targetLine.visible = false;
+        // Telemetry arrives as new objects at 10 Hz; only a visible change of pose (0.02°, under a tenth of a pixel on a
+        // 0.5 m mount) needs a new picture. Sidereal tracking therefore redraws every few seconds, a slew every update.
+        const pose = [azAxis, altAxis, m.target?.alt, m.target?.az].map((v) => (v === undefined ? "-" : Math.round(v * 50) + 0)).join(",");
+        if (pose !== lastPose) {
+          lastPose = pose;
+          azGroup.rotation.y = -azAxis * DEG;
+          altGroup.rotation.x = altAxis * DEG;
+          if (m.target) {
+            const a = m.target.alt * DEG;
+            const z = m.target.az * DEG;
+            const dir = new THREE.Vector3(Math.cos(a) * Math.sin(z), Math.sin(a), -Math.cos(a) * Math.cos(z));
+            targetGeo.setFromPoints([pivot, pivot.clone().addScaledVector(dir, 2.4)]);
+            targetLine.computeLineDistances();
+            targetLine.visible = true;
+          } else targetLine.visible = false;
+          invalidate();
+        }
       }
-      controls.update();
+      // update() returns true while the camera is moving, which includes the damping glide after a drag.
+      const cameraMoved = controls.update();
+      if (!dirty && !cameraMoved) return;
+      dirty = false;
       renderer.render(scene, camera);
+      wrap.dataset.renders = String(++renders); // lets the browser tests count rendered frames
     };
     loop();
     return () => {
       cancelAnimationFrame(raf);
+      payloadRef.current.invalidate = () => {};
+      controls.removeEventListener("change", invalidate);
       ro.disconnect();
       controls.dispose();
       disposeTree(scene);
@@ -898,6 +928,7 @@ export default function MountView() {
     enableShadows(p);
     ref.holder.add(p);
     ref.shape = payloadShape;
+    ref.invalidate();
   });
 
   return (

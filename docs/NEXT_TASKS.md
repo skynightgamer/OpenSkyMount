@@ -30,3 +30,5 @@
 
 - Fixed the idle simulator's blinking mount crosshair and added a browser regression at maximum sky-map zoom-out.
 - Removed star blinking in the sky map and added a browser regression for steady brightness and size.
+- Cut idle CPU: the sky map caches its static layer and redraws on change (idle ~1 present/s) and the 3D view renders on
+  demand (D52). Still open: measure on a low-end phone, and a per-figure cache would cut the cost of panning at night.

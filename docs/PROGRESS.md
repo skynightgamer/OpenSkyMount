@@ -8,7 +8,7 @@ Update on 2026-11-13: renamed the red-light control to Night mode, increased sky
 
 Review on 2026-11-12: credited artwork creator Johan Meuris in the figure notice; the full test script and frontend build passed.
 
-_Last updated: 2026-11-12 (session 12)._ Main branch: `main` (sessions 6–11 merged). Session 12 is on `feat/session-12-constellation-art` (not merged).
+_Last updated: 2026-11-13 (session 13)._ Main branch: `main` (sessions 6–11 merged). Session 12 is on `feat/session-12-constellation-art` (not merged).
 
 ## Milestones
 
@@ -219,3 +219,13 @@ _Last updated: 2026-11-12 (session 12)._ Main branch: `main` (sessions 6–11 me
   target selects it, flies there and closes, Escape and outside click close it, search hits still positioned). The
   popover is anchored to the whole sky column and capped to its height so the list scrolls instead of being clipped.
   **Unit tests and the scripted browser E2E were not run** at the user's request.
+- **Session 13 (2026-11-13)**: user passed on an external profile: the browser was redrawing the sky map at 60 fps and the
+  3D view every frame while the mount was idle (figures the biggest part at night). Branch `codex/ui-experience`. Fix
+  (D52): sky map cache + overlay with change detection and a motion class per frame (`sky/framegate.ts`, 10 unit tests),
+  3D view rendered on demand, pixel ratio capped at 2. Found while measuring: encoder noise around north (0.002° vs
+  359.998°) and a negative zero made the change detector fire on every telemetry tick, hiding the saving until fixed.
+  Measured in headless Chromium: idle 211 % -> 16 % CPU, tracking 31 %. Smoke test: idle-rate check added; the two
+  frame-counting regressions now force redraws by toggling a layer. 149 backend tests (8 skipped), 68 frontend unit
+  tests and all four browser E2E scripts pass. **Not verified**: temperature/GPU power, a real phone or the user's own
+  Chrome; the figures' cost while panning is unchanged.
+

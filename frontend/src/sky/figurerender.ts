@@ -9,6 +9,12 @@ export const FIGURE_ALPHA = { rest: 0.3, focus: 0.62 };
 
 // ---------------------------------------------------------------- picture loading
 const images = new Map<string, HTMLImageElement | "loading" | "failed">();
+let imageRevision = 0;
+
+/** Counts finished picture loads, so a map that only redraws on change knows a new picture can be drawn. */
+export function figureImageRevision(): number {
+  return imageRevision;
+}
 
 /** The figure's picture once it has loaded (the load starts on first use); null while loading or if it failed. */
 export function figureImage(id: string): HTMLImageElement | null {
@@ -18,7 +24,10 @@ export function figureImage(id: string): HTMLImageElement | null {
   if (typeof Image === "undefined") return null;
   images.set(id, "loading");
   const img = new Image();
-  img.onload = () => images.set(id, img);
+  img.onload = () => {
+    images.set(id, img);
+    imageRevision++;
+  };
   img.onerror = () => images.set(id, "failed");
   img.src = `/figures/${id}.png`;
   return null;
@@ -27,6 +36,12 @@ export function figureImage(id: string): HTMLImageElement | null {
 // ---------------------------------------------------------------- focus animation
 const shown = new Map<string, number>(); // current opacity per figure, eased toward its target
 let lastT = 0;
+let settling = false;
+
+/** True while some figure's opacity is still easing toward its target, so another frame will change the picture. */
+export function figureLayerSettling(): boolean {
+  return settling;
+}
 
 /** Index of the figure the view is centred on (nearest centre within 90 % of its radius), or -1. */
 export function focusedFigure(figs: FigureMesh[], horizonCentres: Vec3[], forward: Vec3, fov: number): number {
@@ -230,12 +245,14 @@ export function drawFigureLayer(a: FigureLayerArgs): void {
   const reach = a.fov * 0.5 * Math.max(1, Math.max(a.w, a.h) / Math.min(a.w, a.h)) * 1.15;
   const horizon = a.figs.map((f) => mulMV(a.m, f.centre));
   const focus = focusedFigure(a.figs, horizon, a.b.f, a.fov);
+  settling = false;
   for (let i = 0; i < a.figs.length; i++) {
     const f = a.figs[i];
     const target = night * (i === focus ? FIGURE_ALPHA.focus : FIGURE_ALPHA.rest);
     const cur = shown.get(f.id) ?? target;
     const next = cur + (target - cur) * k;
     shown.set(f.id, next);
+    if (Math.abs(target - next) > 0.003) settling = true;
     if (next < 0.01) continue;
     if (angleDeg(horizon[i], a.b.f) > reach + f.radiusDeg) continue;
     const img = figureImage(f.id);

@@ -51,6 +51,9 @@ async function checkIdleMountMarker(browser) {
     await page.getByRole("button", { name: "Face E" }).click();
     await page.getByRole("button", { name: "Zoom out" }).click();
     await page.getByRole("button", { name: "Zoom out" }).click();
+    // An idle map only redraws when something changes, so force 80 redraws by toggling a layer.
+    const grid = page.getByRole("checkbox", { name: "Alt-az grid" });
+    for (let i = 0; i < 80; i++) await grid.click();
     await page.waitForFunction(() => window.idleMarkerFrames.length >= 75);
     const stable = await page.evaluate(() => window.idleMarkerFrames.every(Boolean));
     if (!stable) throw new Error("mount marker dropped out while idle");
@@ -86,6 +89,10 @@ async function checkSteadyStars(browser) {
       },
     }));
     await page.goto(base);
+    await page.waitForFunction(() => window.starSamples.length >= 1);
+    // An idle map only redraws when something changes, so force 60 redraws by toggling a layer.
+    const grid = page.getByRole("checkbox", { name: "Alt-az grid" });
+    for (let i = 0; i < 60; i++) await grid.click();
     await page.waitForFunction(() => window.starSamples.length >= 60);
     const stable = await page.evaluate(() => {
       const [alpha, width] = window.starSamples[0];
@@ -97,10 +104,52 @@ async function checkSteadyStars(browser) {
   }
 }
 
+/** A parked mount must not keep the CPU busy: the sky map presents about once a second and the 3D view not at all. */
+async function checkIdleFrameRate(browser) {
+  const ctx = await newCtx(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
+  try {
+    const page = await ctx.newPage();
+    await page.goto(base);
+    await waitText(page, ".telemetry .mode", /Idle/);
+    await page.waitForTimeout(2500); // figures and the catalog settle
+    const count = () =>
+      page.evaluate(() => ({
+        sky: Number(document.querySelector(".sky-canvas").dataset.draws),
+        mount: Number(document.querySelector(".mount-wrap").dataset.renders),
+      }));
+    const a = await count();
+    await page.waitForTimeout(3000);
+    const b = await count();
+    if (b.sky - a.sky > 8) throw new Error(`idle sky map drew ${b.sky - a.sky} frames in 3 s (expected about 3)`);
+    if (b.mount - a.mount > 0) throw new Error(`parked 3D view rendered ${b.mount - a.mount} frames in 3 s (expected 0)`);
+    // Interaction still draws every display frame.
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.waitForTimeout(700);
+    const c = await count();
+    if (c.sky - b.sky < 15) throw new Error(`zoom animation drew only ${c.sky - b.sky} frames in 0.7 s`);
+    const box = await page.locator(".mount-wrap").boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 30, { steps: 12 });
+    await page.mouse.up();
+    const d = await count();
+    if (d.mount - c.mount < 5) throw new Error("orbiting the 3D view did not render new frames");
+    // ...and the damping glide after the drag settles, so the view goes quiet again.
+    await page.waitForTimeout(2500);
+    const e1 = await count();
+    await page.waitForTimeout(1500);
+    const e2 = await count();
+    if (e2.mount - e1.mount > 0) throw new Error("3D view kept rendering after the camera came to rest");
+  } finally {
+    await ctx.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch();
   await checkSteadyStars(browser);
   await checkIdleMountMarker(browser);
+  await checkIdleFrameRate(browser);
   const errors = [];
   const ctxA = await newCtx(browser, { viewport: { width: 1440, height: 900 } });
   const ctxB = await newCtx(browser, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
