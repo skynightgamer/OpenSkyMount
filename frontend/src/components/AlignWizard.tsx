@@ -126,7 +126,9 @@ export function AlignWizard() {
   const here = !!cur && target?.id === cur.id;
   const mode = mount?.mode;
   const slewing = here && mode === "slewing";
-  const canSync = ctl && here && !slewing && (mode === "tracking" || mode === "manual" || mode === "idle");
+  // A GoTo that has all but arrived (inside half a degree) is close enough to centre by hand and Sync.
+  const nearly = mount?.tracking_error != null && mount.tracking_error < 0.5;
+  const canSync = ctl && here && (!slewing || nearly) && (mode === "tracking" || mode === "manual" || mode === "idle" || mode === "slewing");
   const offset = simulated && here ? centringOffset(mount?.driver.truth ?? null, target ?? null) : null;
   return (
     <div className="wiz">

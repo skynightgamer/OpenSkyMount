@@ -25,10 +25,10 @@ To connect from other devices, create an admin account on the server computer fi
 
 ## Features
 
-- Interactive offline sky map with stars, planets, constellation art, search, zoom and observing details.
-- Simulated mount with GoTo, tracking, alignment, safety limits and a 3D view.
-- Observing queues, satellites and comets from supplied orbital elements, telemetry recording and replay, gamepad support, and a phone layout.
-- Multi-device control, optional accounts, night mode, and an ASCOM Alpaca interface. The OnStepX adapter and plate solving are experimental.
+- Interactive offline sky map with stars, planets, constellation art you can click (with English names and a short story each), search, zoom and observing details, and a sky events calendar (eclipses, conjunctions, meteor showers, oppositions).
+- Simulated mount with GoTo, tracking, guided star alignment, a slew preview (time, axis turns, cable wrap), safety limits and a 3D view.
+- Observing queues (including mosaic and timelapse planning for a phone or camera), satellites and comets from supplied orbital elements, telemetry recording and replay, gamepad support, and a phone layout.
+- Multi-device control, optional accounts, a dimmable red-light night mode, and an ASCOM Alpaca interface. The OnStepX adapter and plate solving are experimental.
 
 ## Development
 

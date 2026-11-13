@@ -22,7 +22,8 @@ ZENITH_MARGIN = 15.0  # stay this far below the mount's highest reachable altitu
 MAX_MAG = 2.8
 POOL = {2: 24, 3: 22, 4: 18, 5: 15, 6: 13}  # brightest suitable stars tried, by group size (keeps the search small)
 MIN_COUNT, MAX_COUNT = 2, 6
-REUSE_SEP_DEG = 15.0  # a star this close (by name) to an existing alignment point is skipped
+MAX_DEC = 80.0  # stars this close to a celestial pole (Polaris) barely move on the alt-az axes: poor leverage, and a GoTo to
+# one can stall in the gear slack of the simulated mount (see NEXT_TASKS)
 
 
 def _circular_max_gap(azimuths: list[float]) -> float:
@@ -59,6 +60,8 @@ def suggest_alignment_stars(ctl: MountController, count: int = 3) -> dict[str, A
         if label in used or star["name"] in used:
             continue
         ra, dec = eng.catalog.position_at(star, year)
+        if abs(dec) > MAX_DEC:
+            continue
         r, d = math.radians(ra), math.radians(dec)
         v = rot @ np.array([math.cos(d) * math.cos(r), math.cos(d) * math.sin(r), math.sin(d)])
         alt = math.degrees(math.asin(max(-1.0, min(1.0, float(v[2])))))

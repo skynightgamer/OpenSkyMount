@@ -228,4 +228,20 @@ _Last updated: 2026-11-13 (session 13)._ Main branch: `main` (sessions 6–11 me
   frame-counting regressions now force redraws by toggling a layer. 149 backend tests (8 skipped), 68 frontend unit
   tests and all four browser E2E scripts pass. **Not verified**: temperature/GPU power, a real phone or the user's own
   Chrome; the figures' cost while panning is unchanged.
+- **Session 13, later (2026-11-13)**: user asked for six of the suggested features, on `feat/session-13-features`:
+  (1) **Night mode brightness** (D58): Settings → Display slider, per device; E-STOP drawn pale with a dark label in Night
+  mode; the filter adds about 20 % CPU while idle (noted in NEXT_TASKS). (2) **Constellations as targets** (D53): `con:Ori`
+  GoTo/search by Latin or English name, a short story for each of the 88 (`astro/lore.py`), click the painted figure to
+  select it (hit-tested against the paint), labels with English names. (3) **Sky events** (D54, `astro/events.py`,
+  `GET /api/events`, Sky events section): moon phases, seasons, lunar and solar eclipses (type, gamma and what this site
+  sees), conjunctions, oppositions, elongations, ten meteor showers; checked against the published 2026-2028 eclipses.
+  (4) **Slew preview** (D55, `mount/preview.py`): duration, axis turns, path on the map, cable-wrap bar and warnings; the
+  estimate matches the simulated slew within 20 % or 3 s. (5) **Guided star alignment** (D56, `mount/align_stars.py`):
+  well-spread stars, a wizard in the Alignment section, simulator centring offset, point to redo. (6) **Mosaic and
+  timelapse planner** (D57, `mount/planning.py`): frames drawn on the sky map, `queue_add_many`, timelapse field rotation
+  checked against the parallactic angle. Found on the way: a GoTo to a nearly stationary target (Polaris) can stall in the
+  simulated gear slack because the backlash side follows the target's rate; the one-line fix broke two existing tests, so
+  it was reverted and is in NEXT_TASKS. My first comparison of suggested against clustered alignment stars in the
+  simulator was an artefact of that stall; the noisy model-recovery test is the real evidence. **Not verified**: real
+  hardware, a real phone, screen readers, the new panels' look in red-light mode beyond the screenshots.
 

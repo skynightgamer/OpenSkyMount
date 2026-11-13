@@ -43,6 +43,9 @@ def test_suggested_stars_are_bright_high_enough_clear_of_the_zenith_and_the_sun(
         alt, az = rig.engine.altaz(rig.engine.resolve(s["id"]), T0)
         assert separation(s["alt"], s["az"], float(alt), float(az)) < 0.4
     assert res["min_separation_deg"] > 60.0 and res["largest_azimuth_gap_deg"] < 160.0
+    for count in (3, 5, 6):  # never a star within 10 degrees of a pole (Polaris)
+        for s in suggest_alignment_stars(rig.ctl, count)["stars"]:
+            assert abs(float(rig.engine.radec(rig.engine.resolve(s["id"]), T0)["dec_j2000"])) <= 80.0
 
 
 def test_order_is_a_short_tour_from_where_the_mount_points() -> None:
@@ -107,21 +110,16 @@ def test_endpoint(tmp_path) -> None:
 
 
 def test_aligning_on_the_suggested_stars_corrects_the_whole_simulated_sky() -> None:
-    """In the loop with the simulated mount: after the three suggested stars, held-out stars are hit within 72 arc seconds,
-    which three clustered stars cannot do."""
+    """In the loop with the simulated mount (offsets and a tilted base): after the three suggested stars, held-out stars
+    are hit within 72 arc seconds. (The noiseless simulator does not separate good from poor star choices; the noisy
+    recovery test above does.)"""
     from .test_pointing import align_on, errors_at, misaligned, spread_targets
-
-    def after_aligning_on(ids: list[str]) -> float:
-        rig = Rig(misaligned())
-        for tid in ids:
-            align_on(rig, tid)
-        held_out = [t for t in spread_targets(rig, 8) if t not in ids][:4]
-        return max(errors_at(rig, held_out))
 
     rig = Rig(misaligned())
     suggested = [s["id"] for s in suggest_alignment_stars(rig.ctl, 3)["stars"]]
-    clustered = [f"hip:{h}" for h in (54061, 53910, 58001)]  # Dubhe, Merak, Phecda: all in the bowl of the Plough
-    good = after_aligning_on(suggested)
-    bad = after_aligning_on(clustered)
-    assert good < 0.02, good
-    assert bad > 3 * good, (good, bad)
+    for tid in suggested:
+        align_on(rig, tid)
+    held_out = [t for t in spread_targets(rig, 8) if t not in suggested][:4]
+    raw = errors_at(Rig(misaligned()), held_out)
+    assert max(raw) > 0.4  # without alignment the mount misses by a lot
+    assert max(errors_at(rig, held_out)) < 0.02
