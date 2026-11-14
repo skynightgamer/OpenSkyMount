@@ -244,4 +244,5 @@ _Last updated: 2026-11-13 (session 13)._ Main branch: `main` (sessions 6–11 me
   it was reverted and is in NEXT_TASKS. My first comparison of suggested against clustered alignment stars in the
   simulator was an artefact of that stall; the noisy model-recovery test is the real evidence. **Not verified**: real
   hardware, a real phone, screen readers, the new panels' look in red-light mode beyond the screenshots.
-
+  README screenshots (`docs/img`) regenerated with `frontend/e2e/readme-shots.cjs` on the session 13 UI (English constellation
+  names on the map, the pale E-STOP in red-light mode).
